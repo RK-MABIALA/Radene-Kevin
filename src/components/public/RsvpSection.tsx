@@ -29,6 +29,7 @@ export const RsvpSection: React.FC = () => {
   const [step, setStep] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [existingGuest, setExistingGuest] = useState<GuestItem | null>(null);
 
   // Form State
@@ -105,6 +106,8 @@ export const RsvpSection: React.FC = () => {
           setHebergementRequis(found.hebergement_requis);
           setMessageMaries(found.message_maries || '');
           setStep(2);
+        } else {
+          setSearchError(`Le code d'invitation "${codeFromUrl}" est introuvable.`);
         }
       });
     }
@@ -115,6 +118,7 @@ export const RsvpSection: React.FC = () => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsSearching(true);
+    setSearchError(null);
     try {
       const found = await weddingStore.findGuestByQuery(searchQuery);
       if (found) {
@@ -132,8 +136,8 @@ export const RsvpSection: React.FC = () => {
         setMessageMaries(found.message_maries || '');
         setStep(2);
       } else {
-        // Not found, allow manual entry
-        setStep(2);
+        // Strict RSVP: Only registered guests can confirm
+        setSearchError("Aucune invitation trouvée pour cette recherche. Veuillez vérifier l'orthographe de votre prénom et nom ou saisir votre code d'invitation (ex: RK-029). Seuls les invités figurant sur la liste officielle peuvent confirmer.");
       }
     } finally {
       setIsSearching(false);
@@ -166,6 +170,12 @@ export const RsvpSection: React.FC = () => {
 
   // Submit RSVP
   const handleSubmit = async () => {
+    if (!existingGuest) {
+      alert('Veuillez d\'abord retrouver votre invitation officielle sur la liste des invités.');
+      setStep(1);
+      return;
+    }
+
     if (!nom.trim() || !prenom.trim() || !statutRsvp) {
       alert('Veuillez renseigner votre nom, prénom et votre réponse.');
       return;
@@ -291,35 +301,42 @@ export const RsvpSection: React.FC = () => {
                     <input
                       type="text"
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Ex: Alexandre Dupont ou RK-A8F29..."
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        if (searchError) setSearchError(null);
+                      }}
+                      placeholder="Ex: Alexandre Dupont ou RK-029..."
                       className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={isSearching}
-                    className="px-6 py-3 rounded-2xl bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-wider transition-colors shadow-sm"
+                    className="px-6 py-3 rounded-2xl bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50"
                   >
                     {isSearching ? 'Recherche...' : 'Rechercher'}
                   </button>
                 </form>
 
-                <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-gold-200"></div>
-                  <span className="flex-shrink mx-4 text-xs uppercase text-zinc-400 font-semibold tracking-wider">
-                    Ou saisie directe
-                  </span>
-                  <div className="flex-grow border-t border-gold-200"></div>
-                </div>
+                {searchError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-2xl bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200 text-xs flex items-start gap-3 text-left"
+                  >
+                    <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-rose-800 dark:text-rose-300">Invitation non trouvée</p>
+                      <p className="leading-relaxed">{searchError}</p>
+                    </div>
+                  </motion.div>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="w-full py-3.5 rounded-2xl border border-gold-300 bg-white/50 hover:bg-white text-gold-800 dark:text-gold-200 font-semibold text-xs uppercase tracking-widest transition-all"
-                >
-                  Remplir mon formulaire manuellement →
-                </button>
+                <div className="p-4 rounded-2xl bg-gold-50/50 dark:bg-zinc-800/40 border border-gold-200/60 text-center text-xs text-zinc-600 dark:text-zinc-400">
+                  <p>
+                    🔒 <strong>Liste d&apos;invités fermée :</strong> La confirmation de présence est strictement réservée aux personnes figurant sur la liste officielle du mariage.
+                  </p>
+                </div>
               </motion.div>
             )}
 
