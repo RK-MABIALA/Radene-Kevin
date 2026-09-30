@@ -100,8 +100,11 @@ function LoginFormContent() {
     }
   };
 
-  const handleQuickFill = (role: 'ADMIN' | 'PROTOCOLE') => {
-    if (role === 'ADMIN') {
+  const handleQuickFill = (role: 'MARIES' | 'ADMIN' | 'PROTOCOLE') => {
+    if (role === 'MARIES') {
+      setValue('email', 'radenkevinmabiala@gmail.com');
+      setValue('password', 'RK-Mab2023');
+    } else if (role === 'ADMIN') {
       setValue('email', 'admin@radene-kevin.com');
       setValue('password', 'Mariage2026!');
     } else {
@@ -212,20 +215,27 @@ function LoginFormContent() {
         <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold block text-center mb-2">
           Raccourcis Démo (Pré-remplissage rapide) :
         </span>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickFill('MARIES')}
+            className="py-2 px-2 rounded-lg bg-gold-500/20 border border-gold-400/50 text-[11px] text-gold-200 hover:bg-gold-500/30 transition-colors font-medium flex items-center justify-center gap-1 shadow-sm"
+          >
+            <span>💍 Mariés</span>
+          </button>
           <button
             type="button"
             onClick={() => handleQuickFill('ADMIN')}
-            className="py-2 px-3 rounded-lg bg-royal-900/60 border border-gold-400/30 text-[11px] text-gold-300 hover:bg-gold-500/20 transition-colors font-medium flex items-center justify-center gap-1.5"
+            className="py-2 px-2 rounded-lg bg-royal-900/60 border border-gold-400/30 text-[11px] text-gold-300 hover:bg-gold-500/20 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <span>👑 Rôle Admin</span>
+            <span>👑 Admin</span>
           </button>
           <button
             type="button"
             onClick={() => handleQuickFill('PROTOCOLE')}
-            className="py-2 px-3 rounded-lg bg-royal-900/60 border border-gold-400/30 text-[11px] text-gold-300 hover:bg-gold-500/20 transition-colors font-medium flex items-center justify-center gap-1.5"
+            className="py-2 px-2 rounded-lg bg-royal-900/60 border border-gold-400/30 text-[11px] text-gold-300 hover:bg-gold-500/20 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <span>📱 Rôle Protocole</span>
+            <span>📱 Protocole</span>
           </button>
         </div>
       </div>
