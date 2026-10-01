@@ -64,6 +64,8 @@ export interface GuestItem {
   menu_choisi?: string;
   allergies?: string;
   accompagnants_json: Accompagnant[];
+  companion_id?: string | null;
+  relation_type?: 'conjoint' | 'accompagnant' | 'famille' | 'autre';
   qr_code_uid: string;
   table_id?: string | null;
   table_details?: TableItem;

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:hostinger": "next build && node scripts/prepare-standalone.js",
+    "prepare:standalone": "node scripts/prepare-standalone.js",
     "start": "next start",
     "lint": "next lint"
   },

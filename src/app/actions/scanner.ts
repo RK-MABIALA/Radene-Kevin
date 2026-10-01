@@ -21,6 +21,9 @@ export interface CheckInResult {
   message: string;
   guest?: GuestItem;
   table?: TableItem | null;
+  companionGuest?: GuestItem | null;
+  companionTable?: TableItem | null;
+  isCouple?: boolean;
 }
 
 function cleanSearchQuery(raw: string): string {
@@ -90,26 +93,16 @@ function matchGuestFromList(rawQuery: string, list: GuestItem[]): GuestItem | nu
     if (found) return found;
   }
 
-  // 8. Accompagnants match
-  found = list.find((g) => {
-    if (!Array.isArray(g.accompagnants_json)) return false;
-    return g.accompagnants_json.some(
-      (a) =>
-        `${a.prenom} ${a.nom}`.toLowerCase().includes(q) ||
-        (a.prenom && a.prenom.toLowerCase().includes(q)) ||
-        (a.nom && a.nom.toLowerCase().includes(q))
-    );
-  });
-
   return found || null;
 }
 
 /**
- * Server Action : Pointage automatique ou manuel de l'invité au Jour J
+ * Server Action : Pointage automatique ou manuel de l'invité (et/ou son conjoint) au Jour J
  */
 export async function checkInGuestAction(
   searchQueryOrCode: string,
-  protocolName: string = 'Protocole Scanner'
+  protocolName: string = 'Protocole Scanner',
+  alsoCheckInCompanion: boolean = false
 ): Promise<CheckInResult> {
   const query = (searchQueryOrCode || '').trim();
 
@@ -124,12 +117,19 @@ export async function checkInGuestAction(
   const supabase = getSupabaseServerClient();
   let guest: GuestItem | null = null;
   let allGuests: GuestItem[] = [];
+  let allTables: TableItem[] = INITIAL_TABLES;
 
   try {
     if (supabase) {
-      const { data: guestsData } = await supabase.from('guests').select('*');
+      const [{ data: guestsData }, { data: tablesData }] = await Promise.all([
+        supabase.from('guests').select('*'),
+        supabase.from('tables').select('*'),
+      ]);
       if (guestsData && guestsData.length > 0) {
         allGuests = guestsData as GuestItem[];
+      }
+      if (tablesData && tablesData.length > 0) {
+        allTables = tablesData as TableItem[];
       }
     }
 
@@ -157,19 +157,20 @@ export async function checkInGuestAction(
       };
     }
 
-    // Fetch assigned table
+    // Fetch assigned table for primary guest
     let table: TableItem | null = null;
     if (guest.table_id) {
-      if (supabase) {
-        const { data: tableData } = await supabase
-          .from('tables')
-          .select('*')
-          .eq('id', guest.table_id)
-          .maybeSingle();
-        if (tableData) table = tableData as TableItem;
-      }
-      if (!table) {
-        table = INITIAL_TABLES.find((t) => t.id === guest?.table_id) || null;
+      table = allTables.find((t) => t.id === guest?.table_id) || null;
+    }
+
+    // Check for companion
+    let companionGuest: GuestItem | null = null;
+    let companionTable: TableItem | null = null;
+
+    if (guest.companion_id) {
+      companionGuest = allGuests.find((g) => g.id === guest?.companion_id) || null;
+      if (companionGuest && companionGuest.table_id) {
+        companionTable = allTables.find((t) => t.id === companionGuest?.table_id) || null;
       }
     }
 
@@ -187,6 +188,19 @@ export async function checkInGuestAction(
           updated_at: checkInTime,
         })
         .eq('id', guest.id);
+
+      if (alsoCheckInCompanion && companionGuest && companionGuest.id) {
+        const compWasAlready = Boolean(companionGuest.checked_in);
+        await supabase
+          .from('guests')
+          .update({
+            checked_in: true,
+            checked_in_at: compWasAlready ? companionGuest.checked_in_at : checkInTime,
+            checked_in_by: protocolName,
+            updated_at: checkInTime,
+          })
+          .eq('id', companionGuest.id);
+      }
     }
 
     const updatedGuest: GuestItem = {
@@ -196,7 +210,17 @@ export async function checkInGuestAction(
       checked_in_by: protocolName,
     };
 
-    if (wasAlreadyCheckedIn) {
+    let updatedCompanion: GuestItem | null = companionGuest;
+    if (alsoCheckInCompanion && companionGuest) {
+      updatedCompanion = {
+        ...companionGuest,
+        checked_in: true,
+        checked_in_at: companionGuest.checked_in_at || checkInTime,
+        checked_in_by: protocolName,
+      };
+    }
+
+    if (wasAlreadyCheckedIn && (!alsoCheckInCompanion || !companionGuest || companionGuest.checked_in)) {
       return {
         success: true,
         status: 'ALREADY_CHECKED_IN',
@@ -205,15 +229,25 @@ export async function checkInGuestAction(
         }).`,
         guest: updatedGuest,
         table,
+        companionGuest: updatedCompanion,
+        companionTable,
+        isCouple: Boolean(companionGuest),
       };
     }
+
+    const successMsg = alsoCheckInCompanion && companionGuest
+      ? `Bienvenue à ${guest.prenom} et ${companionGuest.prenom} ! Pointage du couple validé avec succès.`
+      : `Bienvenue ${guest.prenom} ${guest.nom} ! Pointage validé avec succès.`;
 
     return {
       success: true,
       status: 'SUCCESS',
-      message: `Bienvenue ${guest.prenom} ${guest.nom} ! Pointage validé avec succès.`,
+      message: successMsg,
       guest: updatedGuest,
       table,
+      companionGuest: updatedCompanion,
+      companionTable,
+      isCouple: Boolean(companionGuest),
     };
   } catch (error: any) {
     console.error('CheckIn Action Exception:', error);
@@ -222,5 +256,75 @@ export async function checkInGuestAction(
       status: 'ERROR',
       message: error?.message || 'Erreur inattendue lors du pointage de l’invité.',
     };
+  }
+}
+
+/**
+ * Server Action : Pointage simultané d'un couple (2 personnes)
+ */
+export async function checkInCoupleAction(
+  primaryGuestId: string,
+  companionGuestId: string,
+  protocolName: string = 'Protocole Scanner'
+): Promise<CheckInResult> {
+  const supabase = getSupabaseServerClient();
+  const checkInTime = new Date().toISOString();
+
+  try {
+    let allGuests: GuestItem[] = INITIAL_GUESTS;
+    let allTables: TableItem[] = INITIAL_TABLES;
+
+    if (supabase) {
+      const [{ data: guestsData }, { data: tablesData }] = await Promise.all([
+        supabase.from('guests').select('*'),
+        supabase.from('tables').select('*'),
+      ]);
+      if (guestsData) allGuests = guestsData as GuestItem[];
+      if (tablesData) allTables = tablesData as TableItem[];
+
+      await supabase
+        .from('guests')
+        .update({ checked_in: true, checked_in_at: checkInTime, checked_in_by: protocolName, updated_at: checkInTime })
+        .in('id', [primaryGuestId, companionGuestId]);
+    }
+
+    const primary = allGuests.find((g) => g.id === primaryGuestId);
+    const companion = allGuests.find((g) => g.id === companionGuestId);
+
+    if (!primary) {
+      return { success: false, status: 'NOT_FOUND', message: 'Invité principal introuvable.' };
+    }
+
+    const updatedPrimary: GuestItem = {
+      ...primary,
+      checked_in: true,
+      checked_in_at: primary.checked_in_at || checkInTime,
+      checked_in_by: protocolName,
+    };
+
+    const updatedCompanion: GuestItem | null = companion ? {
+      ...companion,
+      checked_in: true,
+      checked_in_at: companion.checked_in_at || checkInTime,
+      checked_in_by: protocolName,
+    } : null;
+
+    const table = primary.table_id ? allTables.find((t) => t.id === primary.table_id) || null : null;
+    const companionTable = companion?.table_id ? allTables.find((t) => t.id === companion.table_id) || null : null;
+
+    return {
+      success: true,
+      status: 'SUCCESS',
+      message: companion
+        ? `Pointage validé pour ${primary.prenom} ${primary.nom} & ${companion.prenom} ${companion.nom} !`
+        : `Pointage validé pour ${primary.prenom} ${primary.nom} !`,
+      guest: updatedPrimary,
+      table,
+      companionGuest: updatedCompanion,
+      companionTable,
+      isCouple: Boolean(companion),
+    };
+  } catch (error: any) {
+    return { success: false, status: 'ERROR', message: error?.message || 'Erreur lors du pointage du couple.' };
   }
 }

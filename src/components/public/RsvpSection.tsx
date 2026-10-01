@@ -21,7 +21,7 @@ import {
   Check,
 } from 'lucide-react';
 import { weddingStore } from '@/lib/supabase/client';
-import { GuestItem, Accompagnant } from '@/lib/database.types';
+import { GuestItem } from '@/lib/database.types';
 import { triggerConfetti, generateQrUid } from '@/lib/utils';
 import { submitRsvpAction } from '@/app/actions/rsvp';
 
@@ -31,6 +31,7 @@ export const RsvpSection: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [existingGuest, setExistingGuest] = useState<GuestItem | null>(null);
+  const [linkedCompanion, setLinkedCompanion] = useState<GuestItem | null>(null);
 
   // Form State
   const [prenom, setPrenom] = useState('');
@@ -40,7 +41,6 @@ export const RsvpSection: React.FC = () => {
   const [statutRsvp, setStatutRsvp] = useState<'confirme' | 'decline' | ''>('confirme');
   const [menuChoisi, setMenuChoisi] = useState('viande_boeuf_rossini');
   const [allergies, setAllergies] = useState('');
-  const [accompagnants, setAccompagnants] = useState<Accompagnant[]>([]);
   const [navetteRequise, setNavetteRequise] = useState(false);
   const [hebergementRequis, setHebergementRequis] = useState(false);
   const [messageMaries, setMessageMaries] = useState('');
@@ -91,7 +91,7 @@ export const RsvpSection: React.FC = () => {
     }
     if (codeFromUrl) {
       setSearchQuery(codeFromUrl);
-      weddingStore.findGuestByQuery(codeFromUrl).then((found) => {
+      weddingStore.findGuestByQuery(codeFromUrl).then(async (found) => {
         if (found) {
           setExistingGuest(found);
           setNom(found.nom);
@@ -101,10 +101,18 @@ export const RsvpSection: React.FC = () => {
           setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
           if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
           if (found.allergies) setAllergies(found.allergies);
-          if (found.accompagnants_json) setAccompagnants(found.accompagnants_json);
           setNavetteRequise(found.navette_requise);
           setHebergementRequis(found.hebergement_requis);
           setMessageMaries(found.message_maries || '');
+
+          if (found.companion_id) {
+            const allGuests = await weddingStore.getGuests();
+            const comp = allGuests.find((g) => g.id === found.companion_id);
+            setLinkedCompanion(comp || null);
+          } else {
+            setLinkedCompanion(null);
+          }
+
           setStep(2);
         } else {
           setSearchError(`Le code d'invitation "${codeFromUrl}" est introuvable.`);
@@ -130,42 +138,26 @@ export const RsvpSection: React.FC = () => {
         setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
         if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
         if (found.allergies) setAllergies(found.allergies);
-        if (found.accompagnants_json) setAccompagnants(found.accompagnants_json);
         setNavetteRequise(found.navette_requise);
         setHebergementRequis(found.hebergement_requis);
         setMessageMaries(found.message_maries || '');
+
+        if (found.companion_id) {
+          const allGuests = await weddingStore.getGuests();
+          const comp = allGuests.find((g) => g.id === found.companion_id);
+          setLinkedCompanion(comp || null);
+        } else {
+          setLinkedCompanion(null);
+        }
+
         setStep(2);
       } else {
         // Strict RSVP: Only registered guests can confirm
-        setSearchError("Aucune invitation trouvée pour cette recherche. Veuillez vérifier l'orthographe de votre prénom et nom ou saisir votre code d'invitation (ex: RK-029). Seuls les invités figurant sur la liste officielle peuvent confirmer.");
+        setSearchError("Aucune invitation trouvée pour cette recherche. Veuillez vérifier l'orthographe de votre prénom et nom ou saisir votre code d'invitation (ex: RK-001). Seuls les invités figurant sur la liste officielle peuvent confirmer.");
       }
     } finally {
       setIsSearching(false);
     }
-  };
-
-  // Add plus one
-  const handleAddAccompagnant = () => {
-    setAccompagnants([
-      ...accompagnants,
-      {
-        nom: '',
-        prenom: '',
-        menu: 'viande_boeuf_rossini',
-        allergies: '',
-        age_category: 'adulte',
-      },
-    ]);
-  };
-
-  const handleUpdateAccompagnant = (index: number, field: keyof Accompagnant, value: string) => {
-    const updated = [...accompagnants];
-    updated[index] = { ...updated[index], [field]: value };
-    setAccompagnants(updated);
-  };
-
-  const handleRemoveAccompagnant = (index: number) => {
-    setAccompagnants(accompagnants.filter((_, i) => i !== index));
   };
 
   // Submit RSVP
@@ -192,7 +184,9 @@ export const RsvpSection: React.FC = () => {
         statut_rsvp: statutRsvp as any,
         menu_choisi: statutRsvp === 'confirme' ? menuChoisi : undefined,
         allergies: allergies.trim() || undefined,
-        accompagnants_json: accompagnants,
+        companion_id: existingGuest?.companion_id,
+        relation_type: existingGuest?.relation_type,
+        accompagnants_json: [],
         navette_requise: navetteRequise,
         hebergement_requis: hebergementRequis,
         message_maries: messageMaries.trim() || undefined,
@@ -223,7 +217,9 @@ export const RsvpSection: React.FC = () => {
         statut_rsvp: statutRsvp as any,
         menu_choisi: statutRsvp === 'confirme' ? menuChoisi : undefined,
         allergies: allergies.trim() || undefined,
-        accompagnants_json: accompagnants,
+        companion_id: existingGuest?.companion_id,
+        relation_type: existingGuest?.relation_type,
+        accompagnants_json: [],
         navette_requise: navetteRequise,
         hebergement_requis: hebergementRequis,
         message_maries: messageMaries.trim() || undefined,
@@ -267,7 +263,7 @@ export const RsvpSection: React.FC = () => {
               </span>
               <span className="text-zinc-300">•</span>
               <span className={`font-semibold uppercase tracking-wider ${step === 3 ? 'text-gold-700' : 'text-zinc-400'}`}>
-                3. Menu & +1
+                3. Choix du Menu
               </span>
               <span className="text-zinc-300">•</span>
               <span className={`font-semibold uppercase tracking-wider ${step === 4 ? 'text-gold-700' : 'text-zinc-400'}`}>
@@ -478,7 +474,7 @@ export const RsvpSection: React.FC = () => {
               </motion.div>
             )}
 
-            {/* STEP 3: Menus Gastronomiques & Accompagnants (+1) */}
+            {/* STEP 3: Menus Gastronomiques */}
             {step === 3 && (
               <motion.div
                 key="step3"
@@ -489,10 +485,31 @@ export const RsvpSection: React.FC = () => {
               >
                 <div className="text-center space-y-1">
                   <h3 className="font-serif-luxury text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Choix du Menu & Accompagnants
+                    Choix de Votre Menu
                   </h3>
                   <p className="text-xs text-zinc-500">Étape 2 sur 3</p>
                 </div>
+
+                {/* Linked companion info banner */}
+                {linkedCompanion && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-2xl bg-gold-50/80 dark:bg-zinc-800/80 border border-gold-300/80 text-xs text-zinc-700 dark:text-zinc-300 flex items-center gap-3 shadow-sm"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-gold-100 dark:bg-zinc-700 text-gold-700 dark:text-gold-300 flex items-center justify-center text-lg shrink-0">
+                      💍
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gold-900 dark:text-gold-200">
+                        Vous êtes associé(e) avec {linkedCompanion.prenom} {linkedCompanion.nom}
+                      </p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        Votre conjoint(e) / accompagnant(e) officiel(le) est également enregistré(e) sur la liste (Code : <span className="font-mono font-bold text-gold-700 dark:text-gold-300">{linkedCompanion.qr_code_uid}</span>).
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Primary Guest Menu */}
                 <div>
@@ -537,95 +554,7 @@ export const RsvpSection: React.FC = () => {
                   />
                 </div>
 
-                {/* Accompagnants / +1s Section */}
-                <div className="pt-4 border-t border-gold-200/60">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-serif-luxury text-lg font-bold text-zinc-900 dark:text-zinc-100">
-                        Accompagnants (+1 ou Enfants)
-                      </h4>
-                      <p className="text-xs text-zinc-500">Ajoutez les personnes venant avec vous</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddAccompagnant}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gold-100 dark:bg-zinc-800 text-gold-800 dark:text-gold-200 text-xs font-semibold hover:bg-gold-200 transition-colors"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Ajouter un invité</span>
-                    </button>
-                  </div>
-
-                  {accompagnants.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-gold-50/50 border border-dashed border-gold-200 text-center text-xs text-zinc-500">
-                      Vous venez seul(e). Cliquez sur « Ajouter un invité » si vous êtes accompagné(e).
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {accompagnants.map((acc, index) => (
-                        <div
-                          key={index}
-                          className="p-4 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-gold-200 space-y-3 relative"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold uppercase tracking-wider text-gold-700">
-                              Accompagnant #{index + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAccompagnant(index)}
-                              className="text-zinc-400 hover:text-rose-500 transition-colors p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              required
-                              placeholder="Prénom de l'accompagnant"
-                              value={acc.prenom}
-                              onChange={(e) => handleUpdateAccompagnant(index, 'prenom', e.target.value)}
-                              className="px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-gold-200 text-xs"
-                            />
-                            <input
-                              type="text"
-                              required
-                              placeholder="Nom de l'accompagnant"
-                              value={acc.nom}
-                              onChange={(e) => handleUpdateAccompagnant(index, 'nom', e.target.value)}
-                              className="px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-gold-200 text-xs"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <select
-                              value={acc.menu || 'viande_boeuf_rossini'}
-                              onChange={(e) => handleUpdateAccompagnant(index, 'menu', e.target.value)}
-                              className="px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-gold-200 text-xs"
-                            >
-                              <option value="viande_boeuf_rossini">🥩 Filet de Bœuf Rossini</option>
-                              <option value="poisson_bar_sauvage">🐟 Dos de Bar Sauvage</option>
-                              <option value="vegetarien_truffe">🌱 Risotto aux Morilles & Truffe</option>
-                              <option value="menu_enfant">🧒 Menu Enfant</option>
-                            </select>
-
-                            <input
-                              type="text"
-                              placeholder="Allergies éventuelles"
-                              value={acc.allergies || ''}
-                              onChange={(e) => handleUpdateAccompagnant(index, 'allergies', e.target.value)}
-                              className="px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-gold-200 text-xs"
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-between items-center pt-4">
+                <div className="flex justify-between items-center pt-4 border-t border-gold-200/60">
                   <button
                     type="button"
                     onClick={() => setStep(2)}

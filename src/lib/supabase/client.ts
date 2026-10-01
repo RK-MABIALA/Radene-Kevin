@@ -267,10 +267,20 @@ class WeddingDataStore {
   async saveGuest(guest: Partial<GuestItem>): Promise<GuestItem> {
     const guests = await this.getGuests();
     let updated: GuestItem;
+    const now = new Date().toISOString();
+
+    const previousGuest = guest.id ? guests.find((g) => g.id === guest.id) : null;
+    const previousCompanionId = previousGuest?.companion_id;
 
     if (guest.id) {
       const existing = guests.find(g => g.id === guest.id);
-      updated = { ...existing, ...guest, updated_at: new Date().toISOString() } as GuestItem;
+      updated = {
+        ...existing,
+        ...guest,
+        companion_id: guest.companion_id !== undefined ? guest.companion_id : existing?.companion_id,
+        relation_type: guest.relation_type || existing?.relation_type || 'conjoint',
+        updated_at: now,
+      } as GuestItem;
       const index = guests.findIndex(g => g.id === guest.id);
       if (index !== -1) guests[index] = updated;
       else guests.push(updated);
@@ -284,20 +294,62 @@ class WeddingDataStore {
         statut_rsvp: guest.statut_rsvp || 'en_attente',
         menu_choisi: guest.menu_choisi,
         allergies: guest.allergies,
+        companion_id: guest.companion_id || null,
+        relation_type: guest.relation_type || 'conjoint',
         accompagnants_json: guest.accompagnants_json || [],
         qr_code_uid: guest.qr_code_uid || `RK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
         table_id: guest.table_id || null,
         checked_in: guest.checked_in || false,
         checked_in_at: guest.checked_in_at || null,
         checked_in_by: guest.checked_in_by || null,
-        nombre_invites: guest.nombre_invites || 1,
+        nombre_invites: 1,
         navette_requise: guest.navette_requise || false,
         hebergement_requis: guest.hebergement_requis || false,
         message_maries: guest.message_maries,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       };
       guests.push(updated);
+    }
+
+    // Handle bidirectional companion linking / unlinking
+    const newCompanionId = updated.companion_id;
+
+    // 1. If companion was changed or removed, clear the link on the old companion
+    if (previousCompanionId && previousCompanionId !== newCompanionId) {
+      const oldComp = guests.find((g) => g.id === previousCompanionId);
+      if (oldComp && oldComp.companion_id === updated.id) {
+        oldComp.companion_id = null;
+        oldComp.updated_at = now;
+        if (supabase) {
+          try {
+            await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', oldComp.id);
+          } catch (e) {
+            console.warn('Supabase unlink previous companion error:', e);
+          }
+        }
+      }
+    }
+
+    // 2. If a new companion is linked, establish bidirectional link
+    if (newCompanionId) {
+      const newComp = guests.find((g) => g.id === newCompanionId);
+      if (newComp && newComp.companion_id !== updated.id) {
+        newComp.companion_id = updated.id;
+        newComp.relation_type = updated.relation_type || 'conjoint';
+        newComp.updated_at = now;
+        if (supabase) {
+          try {
+            await supabase.from('guests').update({
+              companion_id: updated.id,
+              relation_type: newComp.relation_type,
+              updated_at: now,
+            } as any).eq('id', newComp.id);
+          } catch (e) {
+            console.warn('Supabase link new companion error:', e);
+          }
+        }
+      }
     }
 
     if (supabase) {
@@ -311,7 +363,65 @@ class WeddingDataStore {
     return updated;
   }
 
+  async linkGuests(guestId1: string, guestId2: string, relationType: 'conjoint' | 'accompagnant' | 'famille' | 'autre' = 'conjoint'): Promise<void> {
+    const guests = await this.getGuests();
+    const g1 = guests.find((g) => g.id === guestId1);
+    const g2 = guests.find((g) => g.id === guestId2);
+    if (!g1 || !g2) return;
+
+    const now = new Date().toISOString();
+    g1.companion_id = g2.id;
+    g1.relation_type = relationType;
+    g1.updated_at = now;
+
+    g2.companion_id = g1.id;
+    g2.relation_type = relationType;
+    g2.updated_at = now;
+
+    if (supabase) {
+      try {
+        await supabase.from('guests').update({ companion_id: g2.id, relation_type: relationType, updated_at: now } as any).eq('id', g1.id);
+        await supabase.from('guests').update({ companion_id: g1.id, relation_type: relationType, updated_at: now } as any).eq('id', g2.id);
+      } catch (err) {
+        console.warn('Supabase linkGuests error:', err);
+      }
+    }
+    this.setItem('guests', guests);
+  }
+
+  async unlinkGuest(guestId: string): Promise<void> {
+    const guests = await this.getGuests();
+    const g = guests.find((item) => item.id === guestId);
+    if (!g) return;
+
+    const now = new Date().toISOString();
+    const oldCompanionId = g.companion_id;
+    g.companion_id = null;
+    g.updated_at = now;
+
+    if (oldCompanionId) {
+      const comp = guests.find((item) => item.id === oldCompanionId);
+      if (comp) {
+        comp.companion_id = null;
+        comp.updated_at = now;
+        if (supabase) {
+          try {
+            await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', oldCompanionId);
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', guestId);
+      } catch (e) {}
+    }
+    this.setItem('guests', guests);
+  }
+
   async deleteGuest(guestId: string): Promise<void> {
+    await this.unlinkGuest(guestId);
     const guests = await this.getGuests();
     const filtered = guests.filter(g => g.id !== guestId);
     if (supabase) {
@@ -330,7 +440,7 @@ class WeddingDataStore {
     if (!guest) return null;
 
     guest.checked_in = true;
-    guest.checked_in_at = new Date().toISOString();
+    guest.checked_in_at = guest.checked_in_at || new Date().toISOString();
     guest.checked_in_by = checkedInBy;
     guest.updated_at = new Date().toISOString();
 
@@ -348,6 +458,39 @@ class WeddingDataStore {
     }
     this.setItem('guests', guests);
     return guest;
+  }
+
+  async checkInMultipleGuests(guestIds: string[], checkedInBy: string = 'Protocole Accueil'): Promise<GuestItem[]> {
+    const guests = await this.getGuests();
+    const now = new Date().toISOString();
+    const updatedList: GuestItem[] = [];
+
+    for (const id of guestIds) {
+      const g = guests.find((item) => item.id === id);
+      if (g) {
+        g.checked_in = true;
+        g.checked_in_at = g.checked_in_at || now;
+        g.checked_in_by = checkedInBy;
+        g.updated_at = now;
+        updatedList.push(g);
+
+        if (supabase) {
+          try {
+            await supabase.from('guests').update({
+              checked_in: true,
+              checked_in_at: g.checked_in_at,
+              checked_in_by: checkedInBy,
+              updated_at: now,
+            } as any).eq('id', id);
+          } catch (err) {
+            console.warn('Supabase checkInMultipleGuests error for id', id, err);
+          }
+        }
+      }
+    }
+
+    this.setItem('guests', guests);
+    return updatedList;
   }
 
   // --- PHOTOS ---

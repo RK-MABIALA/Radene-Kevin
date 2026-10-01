@@ -9,7 +9,7 @@ export const accompagnantSchema = z.object({
   age_category: z.enum(['adulte', 'enfant', 'bebe']).default('adulte'),
 });
 
-// RSVP multi-step form schema
+// RSVP multi-step form schema (strict: 1 guest per invitation, no arbitrary +1 creation)
 export const rsvpFormSchema = z.object({
   // Étape 1: Identification & Présence
   prenom: z.string().min(2, 'Le prénom doit comporter au moins 2 caractères'),
@@ -24,11 +24,7 @@ export const rsvpFormSchema = z.object({
   menu_choisi: z.string().optional(),
   allergies: z.string().optional(),
 
-  // Étape 3: Accompagnants (+1s)
-  has_plus_one: z.boolean().default(false),
-  accompagnants: z.array(accompagnantSchema).default([]),
-
-  // Étape 4: Logistique & Vœux
+  // Étape 3: Logistique & Vœux
   navette_requise: z.boolean().default(false),
   hebergement_requis: z.boolean().default(false),
   message_maries: z.string().max(1000, 'Message trop long (max 1000 caractères)').optional(),
@@ -56,6 +52,8 @@ export const adminGuestSchema = z.object({
   menu_choisi: z.string().optional(),
   allergies: z.string().optional(),
   table_id: z.string().uuid().nullable().optional(),
+  companion_id: z.string().uuid().nullable().optional(),
+  relation_type: z.enum(['conjoint', 'accompagnant', 'famille', 'autre']).default('conjoint'),
   accompagnants_json: z.array(accompagnantSchema).default([]),
   navette_requise: z.boolean().default(false),
   hebergement_requis: z.boolean().default(false),

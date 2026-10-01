@@ -21,11 +21,13 @@ import {
   Check,
   XCircle,
   HelpCircle,
+  Heart,
+  User,
 } from 'lucide-react';
 import { weddingStore } from '@/lib/supabase/client';
 import { GuestItem, TableItem } from '@/lib/database.types';
 import { triggerConfetti, formatDate } from '@/lib/utils';
-import { checkInGuestAction, CheckInResult } from '@/app/actions/scanner';
+import { checkInGuestAction, checkInCoupleAction, CheckInResult } from '@/app/actions/scanner';
 
 /**
  * Web Audio API : Générateur de sons synthétisés sans fichier audio externe
@@ -95,6 +97,7 @@ export const QrScannerCamera: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [autoResetTimer, setAutoResetTimer] = useState<number>(0);
   const [protocolStaffName, setProtocolStaffName] = useState('Protocole Entrée');
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isProcessingRef = useRef<boolean>(false);
@@ -122,15 +125,15 @@ export const QrScannerCamera: React.FC = () => {
   }, [loadData]);
 
   // Statistics
-  const totalGuests = guests.reduce((acc, g) => acc + (g.nombre_invites || 1), 0);
-  const checkedInGuests = guests.filter((g) => g.checked_in).reduce((acc, g) => acc + (g.nombre_invites || 1), 0);
+  const totalGuests = guests.length;
+  const checkedInGuests = guests.filter((g) => g.checked_in).length;
   const remainingGuests = Math.max(0, totalGuests - checkedInGuests);
   const arrivalPercent = totalGuests > 0 ? Math.round((checkedInGuests / totalGuests) * 100) : 0;
 
   // Auto-reset countdown logic
   const startAutoResetCountdown = useCallback(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    let secondsLeft = 4;
+    let secondsLeft = 6;
     setAutoResetTimer(secondsLeft);
 
     timerIntervalRef.current = setInterval(() => {
@@ -145,29 +148,37 @@ export const QrScannerCamera: React.FC = () => {
     }, 1000);
   }, []);
 
+  const guestMap = useMemo(() => {
+    const map = new Map<string, GuestItem>();
+    guests.forEach((g) => map.set(g.id, g));
+    return map;
+  }, [guests]);
+
   // Live matching suggestions for manual search
   const matchingSuggestions = useMemo(() => {
     const q = manualCode.trim().toLowerCase();
     if (!q || q.length < 1) return [];
     return guests.filter((g) => {
       const qDigits = q.replace(/[^\d]/g, '');
+      const comp = g.companion_id ? guestMap.get(g.companion_id) : null;
       if (g.qr_code_uid && g.qr_code_uid.toLowerCase().includes(q)) return true;
       if (/^\d+$/.test(q) && g.qr_code_uid.toLowerCase().includes(q.padStart(3, '0'))) return true;
       if (`${g.prenom} ${g.nom}`.toLowerCase().includes(q)) return true;
       if (`${g.nom} ${g.prenom}`.toLowerCase().includes(q)) return true;
+      if (comp && `${comp.prenom} ${comp.nom}`.toLowerCase().includes(q)) return true;
       if (qDigits.length >= 4 && g.telephone && g.telephone.replace(/[^\d]/g, '').includes(qDigits)) return true;
       return false;
     }).slice(0, 5);
-  }, [manualCode, guests]);
+  }, [manualCode, guests, guestMap]);
 
-  const handleProcessCode = async (decodedText: string) => {
+  const handleProcessCode = async (decodedText: string, autoCheckInBoth: boolean = false) => {
     const cleanCode = decodedText.trim();
     if (!cleanCode || isProcessingRef.current) return;
     isProcessingRef.current = true;
 
     try {
-      // 1. Tenter l'appel via la Server Action Next.js 14
-      let result = await checkInGuestAction(cleanCode, protocolStaffName);
+      // 1. Tenter l'appel via la Server Action Next.js
+      let result = await checkInGuestAction(cleanCode, protocolStaffName, autoCheckInBoth);
 
       // 2. Si le serveur renvoie NOT_FOUND ou ERROR, basculer sur le store réactif local
       if (!result.success) {
@@ -177,6 +188,18 @@ export const QrScannerCamera: React.FC = () => {
           const updated = await weddingStore.checkInGuest(localGuest.id, protocolStaffName);
           const table = tables.find((t) => t.id === localGuest.table_id) || null;
 
+          let companionGuest: GuestItem | null = null;
+          let companionTable: TableItem | null = null;
+          if (localGuest.companion_id) {
+            companionGuest = guests.find((g) => g.id === localGuest.companion_id) || null;
+            if (autoCheckInBoth && companionGuest) {
+              companionGuest = await weddingStore.checkInGuest(companionGuest.id, protocolStaffName);
+            }
+            if (companionGuest && companionGuest.table_id) {
+              companionTable = tables.find((t) => t.id === companionGuest?.table_id) || null;
+            }
+          }
+
           result = {
             success: true,
             status: wasAlready ? 'ALREADY_CHECKED_IN' : 'SUCCESS',
@@ -185,12 +208,15 @@ export const QrScannerCamera: React.FC = () => {
               : `Bienvenue ${localGuest.prenom} ${localGuest.nom} ! Pointage validé avec succès.`,
             guest: updated || localGuest,
             table,
+            companionGuest,
+            companionTable,
+            isCouple: Boolean(companionGuest),
           };
         }
       }
 
       setLastResult(result);
-      loadData();
+      await loadData();
 
       // Audio & Visual Effects
       if (result.status === 'SUCCESS') {
@@ -214,6 +240,66 @@ export const QrScannerCamera: React.FC = () => {
       });
       if (soundEnabled) playAudioFeedback('error');
       startAutoResetCountdown();
+    }
+  };
+
+  // Dedicated handler to check-in the entire couple at once
+  const handleCheckInBoth = async (primaryId: string, companionId: string) => {
+    setIsProcessingAction(true);
+    try {
+      const res = await checkInCoupleAction(primaryId, companionId, protocolStaffName);
+      if (res.success) {
+        await weddingStore.checkInMultipleGuests([primaryId, companionId], protocolStaffName);
+        setLastResult(res);
+        if (soundEnabled) playAudioFeedback('success');
+        triggerConfetti();
+      } else {
+        // Local fallback
+        await weddingStore.checkInMultipleGuests([primaryId, companionId], protocolStaffName);
+        await loadData();
+        const primary = guests.find((g) => g.id === primaryId);
+        const companion = guests.find((g) => g.id === companionId);
+        setLastResult({
+          success: true,
+          status: 'SUCCESS',
+          message: `Pointage du couple validé avec succès !`,
+          guest: primary,
+          companionGuest: companion,
+          isCouple: true,
+        });
+        if (soundEnabled) playAudioFeedback('success');
+        triggerConfetti();
+      }
+      await loadData();
+    } catch (e) {
+      console.error('Error check-in couple:', e);
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // Dedicated handler to check in single guest (e.g. only companion or only primary)
+  const handleCheckInSingle = async (guestId: string) => {
+    setIsProcessingAction(true);
+    try {
+      const updated = await weddingStore.checkInGuest(guestId, protocolStaffName);
+      await loadData();
+      if (lastResult) {
+        if (lastResult.guest?.id === guestId) {
+          setLastResult({
+            ...lastResult,
+            guest: updated || lastResult.guest,
+          });
+        } else if (lastResult.companionGuest?.id === guestId) {
+          setLastResult({
+            ...lastResult,
+            companionGuest: updated || lastResult.companionGuest,
+          });
+        }
+      }
+      if (soundEnabled) playAudioFeedback('success');
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
@@ -268,9 +354,9 @@ export const QrScannerCamera: React.FC = () => {
   };
 
   const menuDisplayMap: Record<string, string> = {
-    viande_boeuf_rossini: '🥩 Filet de Bœuf Rossini',
-    poisson_bar_sauvage: '🐟 Dos de Bar Sauvage',
-    vegetarien_truffe: '🌱 Risotto Morilles & Truffe',
+    viande_boeuf_rossini: '🥩 Bœuf Rossini',
+    poisson_bar_sauvage: '🐟 Bar Sauvage',
+    vegetarien_truffe: '🌱 Risotto Truffe',
     menu_enfant: '🧒 Menu Enfant',
   };
 
@@ -288,7 +374,7 @@ export const QrScannerCamera: React.FC = () => {
                 Protocole d'Accueil Jour J
               </h2>
               <p className="text-xs text-zinc-500">
-                Poste actif : <span className="font-semibold text-gold-700">{protocolStaffName}</span>
+                Poste actif : <span className="font-semibold text-gold-700 dark:text-gold-400">{protocolStaffName}</span>
               </p>
             </div>
           </div>
@@ -298,8 +384,8 @@ export const QrScannerCamera: React.FC = () => {
               onClick={() => setSoundEnabled(!soundEnabled)}
               className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                 soundEnabled
-                  ? 'border-gold-300 bg-gold-50 text-gold-800'
-                  : 'border-zinc-200 text-zinc-400 bg-zinc-50'
+                  ? 'border-gold-300 bg-gold-50 text-gold-800 dark:bg-zinc-800 dark:text-gold-300'
+                  : 'border-zinc-200 text-zinc-400 bg-zinc-50 dark:bg-zinc-800'
               }`}
               title={soundEnabled ? 'Retour sonore activé' : 'Retour sonore désactivé'}
             >
@@ -307,7 +393,7 @@ export const QrScannerCamera: React.FC = () => {
               <span>{soundEnabled ? 'Bip ON' : 'Muet'}</span>
             </button>
 
-            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/50 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span>Scan Direct</span>
             </span>
@@ -316,7 +402,7 @@ export const QrScannerCamera: React.FC = () => {
 
         {/* Live Metrics Grid */}
         <div className="grid grid-cols-3 gap-3 pt-4 text-center">
-          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60">
+          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-800">
             <span className="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">Pointés Arrivés</span>
             <span className="font-serif-luxury text-2xl sm:text-3xl font-bold text-emerald-600">
               {checkedInGuests}
@@ -324,7 +410,7 @@ export const QrScannerCamera: React.FC = () => {
             <span className="text-[10px] text-zinc-500 block">sur {totalGuests} prévus</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60">
+          <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/60 dark:border-zinc-800">
             <span className="text-[10px] uppercase font-bold text-zinc-400 block tracking-wider">Restants</span>
             <span className="font-serif-luxury text-2xl sm:text-3xl font-bold text-amber-600">
               {remainingGuests}
@@ -332,12 +418,12 @@ export const QrScannerCamera: React.FC = () => {
             <span className="text-[10px] text-zinc-500 block">personnes attendues</span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-gold-50/70 dark:bg-zinc-800/60 border border-gold-200">
-            <span className="text-[10px] uppercase font-bold text-gold-700 block tracking-wider">Taux d'Arrivée</span>
-            <span className="font-serif-luxury text-2xl sm:text-3xl font-bold text-gold-800 dark:text-gold-300">
+          <div className="p-3 rounded-2xl bg-gold-50/70 dark:bg-zinc-800/60 border border-gold-200 dark:border-zinc-800">
+            <span className="text-[10px] uppercase font-bold text-gold-700 dark:text-gold-300 block tracking-wider">Taux d'Arrivée</span>
+            <span className="font-serif-luxury text-2xl sm:text-3xl font-bold text-gold-800 dark:text-gold-200">
               {arrivalPercent}%
             </span>
-            <span className="text-[10px] text-gold-600 block">de la salle</span>
+            <span className="text-[10px] text-gold-600 dark:text-gold-400 block">de la salle</span>
           </div>
         </div>
       </div>
@@ -358,7 +444,7 @@ export const QrScannerCamera: React.FC = () => {
                   Caméra prête pour le pointage
                 </h3>
                 <p className="text-xs text-zinc-300 mt-1 max-w-sm mx-auto">
-                  Pointez la caméra vers le Pass QR Code de l'invité pour l'orienter instantanément.
+                  Pointez la caméra vers le Pass QR Code de l'invité pour pointer individuellement ou pour le couple.
                 </p>
               </div>
               <button
@@ -398,7 +484,7 @@ export const QrScannerCamera: React.FC = () => {
         </div>
 
         {/* Manual Fallback Input with Autocomplete */}
-        <div className="mt-6 pt-4 border-t border-gold-200/60 relative">
+        <div className="mt-6 pt-4 border-t border-gold-200/60 dark:border-zinc-800 relative">
           <form onSubmit={handleManualSubmit} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-3.5 w-4 h-4 text-zinc-400" />
@@ -406,8 +492,8 @@ export const QrScannerCamera: React.FC = () => {
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Saisie manuelle : Nom, Prénom ou Code QR (ex: Glad, RK-029, 29)..."
-                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-zinc-800 border border-gold-300 text-xs focus:outline-none focus:ring-2 focus:ring-gold-500"
+                placeholder="Saisie manuelle : Nom, Prénom, Conjoint ou Code QR (ex: Dossou, RK-001)..."
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-zinc-800 border border-gold-300 dark:border-zinc-700 text-xs focus:outline-none focus:ring-2 focus:ring-gold-500"
               />
             </div>
             <button
@@ -426,6 +512,7 @@ export const QrScannerCamera: React.FC = () => {
               </div>
               {matchingSuggestions.map((g) => {
                 const tableName = tables.find((t) => t.id === g.table_id)?.nom_numero || 'Table non assignée';
+                const companion = g.companion_id ? guestMap.get(g.companion_id) : null;
                 return (
                   <div
                     key={g.id}
@@ -438,6 +525,11 @@ export const QrScannerCamera: React.FC = () => {
                       <div>
                         <span className="font-semibold text-zinc-900 dark:text-zinc-100 block">
                           {g.prenom} {g.nom}
+                          {companion && (
+                            <span className="text-gold-700 dark:text-gold-400 text-[11px] font-normal ml-1.5">
+                              (💍 Conjoint : {companion.prenom} {companion.nom})
+                            </span>
+                          )}
                         </span>
                         <span className="text-[10px] text-zinc-400 block">
                           {tableName} • {g.telephone || 'Sans tél'}
@@ -490,7 +582,9 @@ export const QrScannerCamera: React.FC = () => {
                     <span className="text-xs font-bold uppercase tracking-widest text-emerald-800 dark:text-emerald-300 block">
                       Pointage Validé • Bienvenue !
                     </span>
-                    <span className="text-[11px] text-emerald-600">Enregistré dans la base de données</span>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                      {lastResult.message}
+                    </span>
                   </div>
                 </>
               )}
@@ -502,7 +596,7 @@ export const QrScannerCamera: React.FC = () => {
                     <span className="text-xs font-bold uppercase tracking-widest text-amber-800 dark:text-amber-300 block">
                       Déjà Pointé Antérieurement ⚠️
                     </span>
-                    <span className="text-[11px] text-amber-700">
+                    <span className="text-[11px] text-amber-700 dark:text-amber-400">
                       {lastResult.guest?.checked_in_at
                         ? `Pointé à ${new Date(lastResult.guest.checked_in_at).toLocaleTimeString('fr-FR')}`
                         : 'Déjà enregistré'}
@@ -533,71 +627,199 @@ export const QrScannerCamera: React.FC = () => {
 
           {/* Guest & Placement Details */}
           {lastResult.guest && (
-            <div className="py-6 text-center space-y-5">
-              <div>
-                <h3 className="font-serif-luxury text-3xl sm:text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-                  {lastResult.guest.prenom} {lastResult.guest.nom}
-                </h3>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Invitation pour {lastResult.guest.nombre_invites} personne{lastResult.guest.nombre_invites > 1 ? 's' : ''}
-                </p>
-              </div>
-
-              {/* High-visibility Table Badge */}
-              <div className="inline-block p-5 rounded-3xl bg-gradient-to-r from-gold-500 via-gold-600 to-gold-700 text-white shadow-gold max-w-sm w-full mx-auto">
-                <span className="text-[11px] uppercase font-bold tracking-widest block opacity-90 mb-1">
-                  Orientation Table
-                </span>
-                <span className="font-serif-luxury text-3xl font-bold block">
-                  {lastResult.table?.nom_numero || 'Table Non Assignée'}
-                </span>
-                <div className="flex items-center justify-center gap-2 text-xs opacity-90 mt-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Zone : {lastResult.table?.zone || 'Salle Principale'}</span>
-                </div>
-              </div>
-
-              {/* Accompagnants & Menu Details Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left text-xs pt-2">
-                <div className="p-4 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200">
-                  <span className="font-bold text-zinc-500 uppercase text-[10px] block mb-1">
-                    Composition du Groupe
-                  </span>
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                    {lastResult.guest.prenom} {lastResult.guest.nom}
+            <div className="py-6 space-y-6">
+              {/* If couple is present */}
+              {lastResult.companionGuest ? (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gold-100 dark:bg-zinc-800 text-gold-800 dark:text-gold-300 text-xs font-bold uppercase tracking-widest mb-2 border border-gold-300/60">
+                      <Heart className="w-3.5 h-3.5 text-gold-600 fill-gold-600/40" />
+                      <span>Pass Couple Associé</span>
+                    </div>
+                    <h3 className="font-serif-luxury text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+                      {lastResult.guest.prenom} {lastResult.guest.nom} &amp; {lastResult.companionGuest.prenom} {lastResult.companionGuest.nom}
+                    </h3>
                   </div>
-                  {lastResult.guest.accompagnants_json && lastResult.guest.accompagnants_json.length > 0 ? (
-                    <div className="mt-1 space-y-0.5 text-zinc-600 dark:text-zinc-300">
-                      {lastResult.guest.accompagnants_json.map((acc, i) => (
-                        <div key={i} className="text-[11px] flex items-center gap-1">
-                          <span>+</span>
-                          <span className="font-medium">{acc.prenom} {acc.nom}</span>
-                          <span className="text-zinc-400">({acc.menu || 'standard'})</span>
+
+                  {/* Dual Guest Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+                    {/* Primary Guest Card */}
+                    <div className={`p-4 rounded-2xl border-2 transition-all ${
+                      lastResult.guest.checked_in
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-400'
+                        : 'bg-white dark:bg-zinc-800 border-zinc-200'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                          Invité 1 (Scanné)
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          lastResult.guest.checked_in
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                            : 'bg-zinc-100 text-zinc-500'
+                        }`}>
+                          {lastResult.guest.checked_in ? 'Pointé ✅' : 'Non pointé'}
+                        </span>
+                      </div>
+
+                      <div className="font-serif-luxury text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                        {lastResult.guest.prenom} {lastResult.guest.nom}
+                      </div>
+                      <div className="font-mono text-xs text-gold-700 dark:text-gold-400 mt-0.5">
+                        {lastResult.guest.qr_code_uid}
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-zinc-200/60 dark:border-zinc-700 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Table :</span>
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                            {lastResult.table?.nom_numero || 'Non assignée'}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-[11px] text-zinc-400 mt-0.5 block">Invité seul</span>
-                  )}
-                </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Menu :</span>
+                          <span className="text-zinc-700 dark:text-zinc-300">
+                            {menuDisplayMap[lastResult.guest.menu_choisi || ''] || lastResult.guest.menu_choisi || 'Standard'}
+                          </span>
+                        </div>
+                        {lastResult.guest.allergies && (
+                          <div className="text-[11px] text-rose-600 font-semibold pt-1">
+                            ⚠️ {lastResult.guest.allergies}
+                          </div>
+                        )}
+                      </div>
 
-                <div className="p-4 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200">
-                  <span className="font-bold text-zinc-500 uppercase text-[10px] block mb-1">
-                    Régimes & Allergies
-                  </span>
-                  <div className="font-medium text-zinc-800 dark:text-zinc-200">
-                    {menuDisplayMap[lastResult.guest.menu_choisi || ''] || lastResult.guest.menu_choisi || 'Menu Standard'}
-                  </div>
-                  {lastResult.guest.allergies ? (
-                    <div className="mt-2 p-2 rounded-xl bg-rose-50 text-rose-800 font-bold text-xs border border-rose-200 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
-                      <span>Attention : {lastResult.guest.allergies}</span>
+                      {!lastResult.guest.checked_in && (
+                        <button
+                          type="button"
+                          disabled={isProcessingAction}
+                          onClick={() => handleCheckInSingle(lastResult.guest!.id)}
+                          className="mt-3 w-full py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold transition-colors"
+                        >
+                          Pointer {lastResult.guest.prenom}
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <span className="text-[11px] text-zinc-400 mt-1 block">Aucune allergie signalée</span>
+
+                    {/* Companion Guest Card */}
+                    <div className={`p-4 rounded-2xl border-2 transition-all ${
+                      lastResult.companionGuest.checked_in
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-400'
+                        : 'bg-white dark:bg-zinc-800 border-zinc-200'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                          Conjoint(e) Lié(e)
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          lastResult.companionGuest.checked_in
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                            : 'bg-zinc-100 text-zinc-500'
+                        }`}>
+                          {lastResult.companionGuest.checked_in ? 'Pointé ✅' : 'Non pointé'}
+                        </span>
+                      </div>
+
+                      <div className="font-serif-luxury text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                        {lastResult.companionGuest.prenom} {lastResult.companionGuest.nom}
+                      </div>
+                      <div className="font-mono text-xs text-gold-700 dark:text-gold-400 mt-0.5">
+                        {lastResult.companionGuest.qr_code_uid}
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-zinc-200/60 dark:border-zinc-700 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Table :</span>
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                            {lastResult.companionTable?.nom_numero || lastResult.table?.nom_numero || 'Non assignée'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Menu :</span>
+                          <span className="text-zinc-700 dark:text-zinc-300">
+                            {menuDisplayMap[lastResult.companionGuest.menu_choisi || ''] || lastResult.companionGuest.menu_choisi || 'Standard'}
+                          </span>
+                        </div>
+                        {lastResult.companionGuest.allergies && (
+                          <div className="text-[11px] text-rose-600 font-semibold pt-1">
+                            ⚠️ {lastResult.companionGuest.allergies}
+                          </div>
+                        )}
+                      </div>
+
+                      {!lastResult.companionGuest.checked_in && (
+                        <button
+                          type="button"
+                          disabled={isProcessingAction}
+                          onClick={() => handleCheckInSingle(lastResult.companionGuest!.id)}
+                          className="mt-3 w-full py-1.5 rounded-xl bg-gold-600 hover:bg-gold-700 text-white text-xs font-semibold transition-colors"
+                        >
+                          Pointer {lastResult.companionGuest.prenom}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Couple Action Button: Pointer les 2 à la fois */}
+                  {(!lastResult.guest.checked_in || !lastResult.companionGuest.checked_in) && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        disabled={isProcessingAction}
+                        onClick={() => handleCheckInBoth(lastResult.guest!.id, lastResult.companionGuest!.id)}
+                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-widest shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+                      >
+                        <UserCheck className="w-4 h-4" />
+                        <span>Valider l'Entrée pour le Couple Complet (2 Personnes)</span>
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
+              ) : (
+                /* Individual Guest Card */
+                <div className="text-center space-y-4">
+                  <div>
+                    <h3 className="font-serif-luxury text-3xl sm:text-4xl font-bold text-zinc-900 dark:text-zinc-50">
+                      {lastResult.guest.prenom} {lastResult.guest.nom}
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Invitation individuelle officielle (Code : {lastResult.guest.qr_code_uid})
+                    </p>
+                  </div>
+
+                  {/* High-visibility Table Badge */}
+                  <div className="inline-block p-5 rounded-3xl bg-gradient-to-r from-gold-500 via-gold-600 to-gold-700 text-white shadow-gold max-w-sm w-full mx-auto">
+                    <span className="text-[11px] uppercase font-bold tracking-widest block opacity-90 mb-1">
+                      Orientation Table
+                    </span>
+                    <span className="font-serif-luxury text-3xl font-bold block">
+                      {lastResult.table?.nom_numero || 'Table Non Assignée'}
+                    </span>
+                    <div className="flex items-center justify-center gap-2 text-xs opacity-90 mt-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Zone : {lastResult.table?.zone || 'Salle Principale'}</span>
+                    </div>
+                  </div>
+
+                  {/* Menu & Allergies */}
+                  <div className="p-4 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200 text-left text-xs max-w-sm mx-auto">
+                    <span className="font-bold text-zinc-500 uppercase text-[10px] block mb-1">
+                      Menu Sélectionné
+                    </span>
+                    <div className="font-medium text-zinc-800 dark:text-zinc-200">
+                      {menuDisplayMap[lastResult.guest.menu_choisi || ''] || lastResult.guest.menu_choisi || 'Menu Standard'}
+                    </div>
+                    {lastResult.guest.allergies ? (
+                      <div className="mt-2 p-2 rounded-xl bg-rose-50 text-rose-800 font-bold text-xs border border-rose-200 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                        <span>Attention : {lastResult.guest.allergies}</span>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-zinc-400 mt-1 block">Aucune allergie signalée</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -617,7 +839,7 @@ export const QrScannerCamera: React.FC = () => {
                 isProcessingRef.current = false;
                 startScanner();
               }}
-              className="px-6 py-2.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold uppercase tracking-wider shadow-sm transition-colors"
+              className="px-6 py-2.5 rounded-full bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-white text-xs font-semibold uppercase tracking-wider shadow-sm transition-colors"
             >
               Scanner Invité Suivant Immédiatement →
             </button>

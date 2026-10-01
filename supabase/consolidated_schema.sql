@@ -88,6 +88,8 @@ CREATE TABLE guests (
     statut_rsvp rsvp_status NOT NULL DEFAULT 'en_attente',
     menu_choisi TEXT,
     allergies TEXT,
+    companion_id UUID REFERENCES guests(id) ON DELETE SET NULL,
+    relation_type TEXT DEFAULT 'conjoint',
     accompagnants_json JSONB DEFAULT '[]'::jsonb,
     qr_code_uid TEXT NOT NULL UNIQUE DEFAULT UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 8)),
     table_id UUID REFERENCES tables(id) ON DELETE SET NULL,
@@ -104,6 +106,7 @@ CREATE TABLE guests (
 
 CREATE INDEX idx_guests_qr_code_uid ON guests(qr_code_uid);
 CREATE INDEX idx_guests_nom_prenom ON guests(LOWER(nom), LOWER(prenom));
+CREATE INDEX idx_guests_companion_id ON guests(companion_id);
 CREATE INDEX idx_guests_statut_rsvp ON guests(statut_rsvp);
 CREATE INDEX idx_guests_table_id ON guests(table_id);
 
