@@ -77,6 +77,41 @@ export const RsvpSection: React.FC = () => {
     },
   ];
 
+  const [guestSuggestions, setGuestSuggestions] = useState<GuestItem[]>([]);
+  const [allRegisteredGuests, setAllRegisteredGuests] = useState<GuestItem[]>([]);
+
+  // Load all registered guests on mount for fast autocomplete search
+  useEffect(() => {
+    weddingStore.getGuests().then((guests) => {
+      setAllRegisteredGuests(guests);
+    });
+  }, []);
+
+  const selectGuest = async (found: GuestItem) => {
+    setExistingGuest(found);
+    setNom(found.nom);
+    setPrenom(found.prenom);
+    setEmail(found.email || '');
+    setTelephone(found.telephone || '');
+    setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
+    if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
+    if (found.allergies) setAllergies(found.allergies);
+    setNavetteRequise(found.navette_requise);
+    setHebergementRequis(found.hebergement_requis);
+    setMessageMaries(found.message_maries || '');
+    setGuestSuggestions([]);
+
+    if (found.companion_id) {
+      const allGuests = await weddingStore.getGuests();
+      const comp = allGuests.find((g) => g.id === found.companion_id);
+      setLinkedCompanion(comp || null);
+    } else {
+      setLinkedCompanion(null);
+    }
+
+    setStep(2);
+  };
+
   // Auto-detect code from URL on load
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -93,27 +128,7 @@ export const RsvpSection: React.FC = () => {
       setSearchQuery(codeFromUrl);
       weddingStore.findGuestByQuery(codeFromUrl).then(async (found) => {
         if (found) {
-          setExistingGuest(found);
-          setNom(found.nom);
-          setPrenom(found.prenom);
-          setEmail(found.email || '');
-          setTelephone(found.telephone || '');
-          setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
-          if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
-          if (found.allergies) setAllergies(found.allergies);
-          setNavetteRequise(found.navette_requise);
-          setHebergementRequis(found.hebergement_requis);
-          setMessageMaries(found.message_maries || '');
-
-          if (found.companion_id) {
-            const allGuests = await weddingStore.getGuests();
-            const comp = allGuests.find((g) => g.id === found.companion_id);
-            setLinkedCompanion(comp || null);
-          } else {
-            setLinkedCompanion(null);
-          }
-
-          setStep(2);
+          await selectGuest(found);
         } else {
           setSearchError(`Le code d'invitation "${codeFromUrl}" est introuvable.`);
         }
@@ -121,7 +136,31 @@ export const RsvpSection: React.FC = () => {
     }
   }, []);
 
-  // Search existing guest
+  // Filter suggestions live as user types
+  const handleQueryChange = (val: string) => {
+    setSearchQuery(val);
+    if (searchError) setSearchError(null);
+    const trimmed = val.trim().toLowerCase();
+    if (trimmed.length >= 2 && allRegisteredGuests.length > 0) {
+      const matches = allRegisteredGuests.filter((g) => {
+        const fullName = `${g.prenom} ${g.nom}`.toLowerCase();
+        const reverseName = `${g.nom} ${g.prenom}`.toLowerCase();
+        const qrCode = (g.qr_code_uid || '').toLowerCase();
+        return (
+          fullName.includes(trimmed) ||
+          reverseName.includes(trimmed) ||
+          qrCode.includes(trimmed) ||
+          g.prenom.toLowerCase().includes(trimmed) ||
+          g.nom.toLowerCase().includes(trimmed)
+        );
+      }).slice(0, 5);
+      setGuestSuggestions(matches);
+    } else {
+      setGuestSuggestions([]);
+    }
+  };
+
+  // Search existing guest on form submit
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -130,27 +169,7 @@ export const RsvpSection: React.FC = () => {
     try {
       const found = await weddingStore.findGuestByQuery(searchQuery);
       if (found) {
-        setExistingGuest(found);
-        setNom(found.nom);
-        setPrenom(found.prenom);
-        setEmail(found.email || '');
-        setTelephone(found.telephone || '');
-        setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
-        if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
-        if (found.allergies) setAllergies(found.allergies);
-        setNavetteRequise(found.navette_requise);
-        setHebergementRequis(found.hebergement_requis);
-        setMessageMaries(found.message_maries || '');
-
-        if (found.companion_id) {
-          const allGuests = await weddingStore.getGuests();
-          const comp = allGuests.find((g) => g.id === found.companion_id);
-          setLinkedCompanion(comp || null);
-        } else {
-          setLinkedCompanion(null);
-        }
-
-        setStep(2);
+        await selectGuest(found);
       } else {
         // Strict RSVP: Only registered guests can confirm
         setSearchError("Aucune invitation trouvée pour cette recherche. Veuillez vérifier l'orthographe de votre prénom et nom ou saisir votre code d'invitation (ex: RK-001). Seuls les invités figurant sur la liste officielle peuvent confirmer.");
@@ -291,27 +310,64 @@ export const RsvpSection: React.FC = () => {
                   </p>
                 </div>
 
-                <form onSubmit={handleSearch} className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        if (searchError) setSearchError(null);
-                      }}
-                      placeholder="Ex: Alexandre Dupont ou RK-029..."
-                      className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
-                    />
+                <form onSubmit={handleSearch} className="relative">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-4 top-3.5 w-5 h-5 text-zinc-400" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => handleQueryChange(e.target.value)}
+                        placeholder="Ex: Alexandre Dupont ou RK-029..."
+                        className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500 shadow-sm"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSearching}
+                      className="px-6 py-3 rounded-2xl bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {isSearching ? 'Recherche...' : 'Rechercher'}
+                    </button>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={isSearching}
-                    className="px-6 py-3 rounded-2xl bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    {isSearching ? 'Recherche...' : 'Rechercher'}
-                  </button>
+
+                  {/* Live Suggestions Dropdown */}
+                  {guestSuggestions.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute z-20 top-full mt-2 left-0 right-0 bg-white dark:bg-zinc-900 border border-gold-300 dark:border-zinc-700 rounded-2xl shadow-xl overflow-hidden divide-y divide-gold-100 dark:divide-zinc-800 text-left"
+                    >
+                      <div className="px-4 py-2 bg-gold-50/70 dark:bg-zinc-800/80 text-[11px] font-semibold text-gold-800 dark:text-gold-300 uppercase tracking-wider">
+                        Invité(s) correspondant(s) trouvé(s) :
+                      </div>
+                      {guestSuggestions.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => selectGuest(g)}
+                          className="w-full px-4 py-3 text-left hover:bg-gold-50/80 dark:hover:bg-zinc-800 transition-colors flex items-center justify-between group"
+                        >
+                          <div>
+                            <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-gold-700 dark:group-hover:text-gold-300">
+                              {g.prenom} {g.nom}
+                            </span>
+                            {g.relation_type && (
+                              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-gold-100 dark:bg-zinc-800 text-gold-800 dark:text-gold-300 font-medium capitalize">
+                                {g.relation_type}
+                              </span>
+                            )}
+                            <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                              Code : {g.qr_code_uid || 'N/A'}
+                            </div>
+                          </div>
+                          <span className="text-xs font-semibold text-gold-600 group-hover:translate-x-0.5 transition-transform">
+                            Choisir →
+                          </span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
                 </form>
 
                 {searchError && (
@@ -702,10 +758,14 @@ export const RsvpSection: React.FC = () => {
                     </div>
 
                     <div className="text-xs text-zinc-600 dark:text-zinc-400 space-y-1">
-                      <p>
-                        <strong>{submittedGuest.prenom} {submittedGuest.nom}</strong>
-                        {submittedGuest.nombre_invites > 1 && ` (+${submittedGuest.nombre_invites - 1} pers.)`}
+                      <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                        {submittedGuest.prenom} {submittedGuest.nom}
                       </p>
+                      {linkedCompanion && (
+                        <p className="text-[11px] text-gold-700 dark:text-gold-300 font-medium">
+                          💍 Duo associé : {linkedCompanion.prenom} {linkedCompanion.nom}
+                        </p>
+                      )}
                       <p>📍 Eglise Protestante de Dieuppeul &amp; Fun Time • 5 &amp; 6 Déc. 2026</p>
                     </div>
 
