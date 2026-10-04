@@ -1,6 +1,19 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { Database, GuestItem, PhotoItem, GuestbookItem, ProjectTaskItem, TableItem, EventItem, ReminderLogItem } from '../database.types';
 import { INITIAL_EVENTS, INITIAL_GUESTS, INITIAL_GUESTBOOK, INITIAL_PHOTOS, INITIAL_TABLES, INITIAL_TASKS, INITIAL_REMINDERS } from '../mock-data';
+import {
+  getGuestsAction,
+  saveGuestAction,
+  deleteGuestAction,
+  checkInGuestAction,
+  linkGuestsAction,
+  unlinkGuestAction,
+} from '@/app/actions/guests';
+import {
+  getTablesAction,
+  saveTableAction,
+  deleteTableAction,
+} from '@/app/actions/tables';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -115,13 +128,14 @@ class WeddingDataStore {
 
   // --- TABLES ---
   async getTables(): Promise<TableItem[]> {
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.from('tables').select('*');
-        if (!error && data && data.length > 0) return data;
-      } catch (err) {
-        console.warn('Supabase getTables fallback to local data:', err);
+    try {
+      const res = await getTablesAction();
+      if (res.success && res.data && res.data.length > 0) {
+        this.setItem('tables', res.data);
+        return res.data;
       }
+    } catch (err) {
+      console.warn('getTablesAction fallback to local data:', err);
     }
     return this.getItem('tables', INITIAL_TABLES);
   }
@@ -150,12 +164,13 @@ class WeddingDataStore {
       current.push(updated);
     }
 
-    if (supabase) {
-      try {
-        await supabase.from('tables').upsert(updated as any);
-      } catch (err) {
-        console.warn('Supabase saveTable sync error:', err);
+    try {
+      const res = await saveTableAction(updated);
+      if (res.success && res.data) {
+        updated = res.data;
       }
+    } catch (err) {
+      console.warn('saveTableAction sync error:', err);
     }
     this.setItem('tables', current);
     return updated;
@@ -164,25 +179,24 @@ class WeddingDataStore {
   async deleteTable(tableId: string): Promise<void> {
     const current = await this.getTables();
     const filtered = current.filter(t => t.id !== tableId);
-    if (supabase) {
-      try {
-        await supabase.from('tables').delete().eq('id', tableId);
-      } catch (err) {
-        console.warn('Supabase deleteTable sync error:', err);
-      }
+    try {
+      await deleteTableAction(tableId);
+    } catch (err) {
+      console.warn('deleteTableAction sync error:', err);
     }
     this.setItem('tables', filtered);
   }
 
   // --- GUESTS ---
   async getGuests(): Promise<GuestItem[]> {
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.from('guests').select('*').order('nom', { ascending: true });
-        if (!error && data && data.length > 0) return data;
-      } catch (err) {
-        console.warn('Supabase getGuests fallback to local data:', err);
+    try {
+      const res = await getGuestsAction();
+      if (res.success && res.data && res.data.length > 0) {
+        this.setItem('guests', res.data);
+        return res.data;
       }
+    } catch (err) {
+      console.warn('getGuestsAction fallback to local data:', err);
     }
     return this.getItem('guests', INITIAL_GUESTS);
   }
@@ -265,231 +279,121 @@ class WeddingDataStore {
   }
 
   async saveGuest(guest: Partial<GuestItem>): Promise<GuestItem> {
-    const guests = await this.getGuests();
-    let updated: GuestItem;
+    let guests = await this.getGuests();
     const now = new Date().toISOString();
 
-    const previousGuest = guest.id ? guests.find((g) => g.id === guest.id) : null;
-    const previousCompanionId = previousGuest?.companion_id;
+    let targetGuest: Partial<GuestItem> = { ...guest };
+    if (!targetGuest.id) {
+      targetGuest.id = generateUUID();
+      targetGuest.created_at = now;
+    }
+    targetGuest.updated_at = now;
 
-    if (guest.id) {
-      const existing = guests.find(g => g.id === guest.id);
-      updated = {
-        ...existing,
-        ...guest,
-        companion_id: guest.companion_id !== undefined ? guest.companion_id : existing?.companion_id,
-        relation_type: guest.relation_type || existing?.relation_type || 'conjoint',
-        updated_at: now,
-      } as GuestItem;
-      const index = guests.findIndex(g => g.id === guest.id);
-      if (index !== -1) guests[index] = updated;
-      else guests.push(updated);
+    try {
+      const res = await saveGuestAction(targetGuest);
+      if (res.success && res.data) {
+        targetGuest = res.data;
+      } else if (res.error) {
+        console.error('Erreur saveGuestAction:', res.error);
+        throw new Error(res.error);
+      }
+    } catch (err: any) {
+      console.warn('saveGuestAction exception:', err);
+      if (err.message && !err.message.includes('fetch')) {
+        throw err;
+      }
+    }
+
+    const saved = targetGuest as GuestItem;
+    const existingIndex = guests.findIndex(g => g.id === saved.id);
+    if (existingIndex !== -1) {
+      guests[existingIndex] = saved;
     } else {
-      updated = {
-        id: generateUUID(),
-        nom: guest.nom || '',
-        prenom: guest.prenom || '',
-        email: guest.email,
-        telephone: guest.telephone,
-        statut_rsvp: guest.statut_rsvp || 'en_attente',
-        menu_choisi: guest.menu_choisi,
-        allergies: guest.allergies,
-        companion_id: guest.companion_id || null,
-        relation_type: guest.relation_type || 'conjoint',
-        accompagnants_json: guest.accompagnants_json || [],
-        qr_code_uid: guest.qr_code_uid || `RK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-        table_id: guest.table_id || null,
-        checked_in: guest.checked_in || false,
-        checked_in_at: guest.checked_in_at || null,
-        checked_in_by: guest.checked_in_by || null,
-        nombre_invites: 1,
-        navette_requise: guest.navette_requise || false,
-        hebergement_requis: guest.hebergement_requis || false,
-        message_maries: guest.message_maries,
-        created_at: now,
-        updated_at: now,
-      };
-      guests.push(updated);
+      guests.push(saved);
     }
 
-    // Handle bidirectional companion linking / unlinking
-    const newCompanionId = updated.companion_id;
-
-    // 1. If companion was changed or removed, clear the link on the old companion
-    if (previousCompanionId && previousCompanionId !== newCompanionId) {
-      const oldComp = guests.find((g) => g.id === previousCompanionId);
-      if (oldComp && oldComp.companion_id === updated.id) {
-        oldComp.companion_id = null;
-        oldComp.updated_at = now;
-        if (supabase) {
-          try {
-            await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', oldComp.id);
-          } catch (e) {
-            console.warn('Supabase unlink previous companion error:', e);
-          }
-        }
-      }
-    }
-
-    // 2. If a new companion is linked, establish bidirectional link
-    if (newCompanionId) {
-      const newComp = guests.find((g) => g.id === newCompanionId);
-      if (newComp && newComp.companion_id !== updated.id) {
-        newComp.companion_id = updated.id;
-        newComp.relation_type = updated.relation_type || 'conjoint';
-        newComp.updated_at = now;
-        if (supabase) {
-          try {
-            await supabase.from('guests').update({
-              companion_id: updated.id,
-              relation_type: newComp.relation_type,
-              updated_at: now,
-            } as any).eq('id', newComp.id);
-          } catch (e) {
-            console.warn('Supabase link new companion error:', e);
-          }
-        }
-      }
-    }
-
-    if (supabase) {
-      try {
-        await supabase.from('guests').upsert(updated as any);
-      } catch (err) {
-        console.warn('Supabase saveGuest sync error:', err);
-      }
-    }
     this.setItem('guests', guests);
-    return updated;
+    return saved;
   }
 
   async linkGuests(guestId1: string, guestId2: string, relationType: 'conjoint' | 'accompagnant' | 'famille' | 'autre' = 'conjoint'): Promise<void> {
+    try {
+      await linkGuestsAction(guestId1, guestId2, relationType);
+    } catch (err) {
+      console.warn('linkGuestsAction error:', err);
+    }
     const guests = await this.getGuests();
     const g1 = guests.find((g) => g.id === guestId1);
     const g2 = guests.find((g) => g.id === guestId2);
-    if (!g1 || !g2) return;
-
-    const now = new Date().toISOString();
-    g1.companion_id = g2.id;
-    g1.relation_type = relationType;
-    g1.updated_at = now;
-
-    g2.companion_id = g1.id;
-    g2.relation_type = relationType;
-    g2.updated_at = now;
-
-    if (supabase) {
-      try {
-        await supabase.from('guests').update({ companion_id: g2.id, relation_type: relationType, updated_at: now } as any).eq('id', g1.id);
-        await supabase.from('guests').update({ companion_id: g1.id, relation_type: relationType, updated_at: now } as any).eq('id', g2.id);
-      } catch (err) {
-        console.warn('Supabase linkGuests error:', err);
-      }
+    if (g1 && g2) {
+      g1.companion_id = g2.id;
+      g1.relation_type = relationType;
+      g2.companion_id = g1.id;
+      g2.relation_type = relationType;
+      this.setItem('guests', guests);
     }
-    this.setItem('guests', guests);
   }
 
   async unlinkGuest(guestId: string): Promise<void> {
+    try {
+      await unlinkGuestAction(guestId);
+    } catch (err) {
+      console.warn('unlinkGuestAction error:', err);
+    }
     const guests = await this.getGuests();
     const g = guests.find((item) => item.id === guestId);
-    if (!g) return;
-
-    const now = new Date().toISOString();
-    const oldCompanionId = g.companion_id;
-    g.companion_id = null;
-    g.updated_at = now;
-
-    if (oldCompanionId) {
-      const comp = guests.find((item) => item.id === oldCompanionId);
-      if (comp) {
-        comp.companion_id = null;
-        comp.updated_at = now;
-        if (supabase) {
-          try {
-            await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', oldCompanionId);
-          } catch (e) {}
-        }
+    if (g) {
+      const oldCompId = g.companion_id;
+      g.companion_id = null;
+      if (oldCompId) {
+        const comp = guests.find((item) => item.id === oldCompId);
+        if (comp) comp.companion_id = null;
       }
+      this.setItem('guests', guests);
     }
-
-    if (supabase) {
-      try {
-        await supabase.from('guests').update({ companion_id: null, updated_at: now } as any).eq('id', guestId);
-      } catch (e) {}
-    }
-    this.setItem('guests', guests);
   }
 
   async deleteGuest(guestId: string): Promise<void> {
-    await this.unlinkGuest(guestId);
+    try {
+      await deleteGuestAction(guestId);
+    } catch (err) {
+      console.warn('deleteGuestAction error:', err);
+    }
     const guests = await this.getGuests();
     const filtered = guests.filter(g => g.id !== guestId);
-    if (supabase) {
-      try {
-        await supabase.from('guests').delete().eq('id', guestId);
-      } catch (err) {
-        console.warn('Supabase deleteGuest sync error:', err);
-      }
-    }
     this.setItem('guests', filtered);
   }
 
   async checkInGuest(guestId: string, checkedInBy: string = 'Protocole Accueil'): Promise<GuestItem | null> {
+    try {
+      const res = await checkInGuestAction(guestId, checkedInBy, true);
+      if (res.success && res.data) {
+        const guests = await this.getGuests();
+        const idx = guests.findIndex(g => g.id === guestId);
+        if (idx !== -1) guests[idx] = res.data;
+        this.setItem('guests', guests);
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('checkInGuestAction error:', err);
+    }
     const guests = await this.getGuests();
     const guest = guests.find(g => g.id === guestId);
     if (!guest) return null;
-
     guest.checked_in = true;
     guest.checked_in_at = guest.checked_in_at || new Date().toISOString();
     guest.checked_in_by = checkedInBy;
     guest.updated_at = new Date().toISOString();
-
-    if (supabase) {
-      try {
-        await supabase.from('guests').update({
-          checked_in: true,
-          checked_in_at: guest.checked_in_at,
-          checked_in_by: checkedInBy,
-          updated_at: guest.updated_at,
-        } as any).eq('id', guestId);
-      } catch (err) {
-        console.warn('Supabase checkInGuest sync error:', err);
-      }
-    }
     this.setItem('guests', guests);
     return guest;
   }
 
   async checkInMultipleGuests(guestIds: string[], checkedInBy: string = 'Protocole Accueil'): Promise<GuestItem[]> {
-    const guests = await this.getGuests();
-    const now = new Date().toISOString();
     const updatedList: GuestItem[] = [];
-
     for (const id of guestIds) {
-      const g = guests.find((item) => item.id === id);
-      if (g) {
-        g.checked_in = true;
-        g.checked_in_at = g.checked_in_at || now;
-        g.checked_in_by = checkedInBy;
-        g.updated_at = now;
-        updatedList.push(g);
-
-        if (supabase) {
-          try {
-            await supabase.from('guests').update({
-              checked_in: true,
-              checked_in_at: g.checked_in_at,
-              checked_in_by: checkedInBy,
-              updated_at: now,
-            } as any).eq('id', id);
-          } catch (err) {
-            console.warn('Supabase checkInMultipleGuests error for id', id, err);
-          }
-        }
-      }
+      const res = await this.checkInGuest(id, checkedInBy);
+      if (res) updatedList.push(res);
     }
-
-    this.setItem('guests', guests);
     return updatedList;
   }
 

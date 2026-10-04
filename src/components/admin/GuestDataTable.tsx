@@ -23,6 +23,7 @@ import {
 import { weddingStore } from '@/lib/supabase/client';
 import { GuestItem, TableItem, RsvpStatus } from '@/lib/database.types';
 import { exportGuestsToCsv, formatDate } from '@/lib/utils';
+import { toast } from 'sonner';
 import { GuestModal } from './GuestModal';
 
 export const GuestDataTable: React.FC = () => {
@@ -112,20 +113,33 @@ export const GuestDataTable: React.FC = () => {
   }, [guests, search, statusFilter, tableFilter, guestMap]);
 
   const handleToggleCheckin = async (guest: GuestItem) => {
-    if (guest.checked_in) {
-      await weddingStore.saveGuest({
-        id: guest.id,
-        checked_in: false,
-        checked_in_at: null,
-      });
-    } else {
-      await weddingStore.checkInGuest(guest.id, 'Admin Table');
+    try {
+      if (guest.checked_in) {
+        await weddingStore.saveGuest({
+          id: guest.id,
+          checked_in: false,
+          checked_in_at: null,
+        });
+        toast.info(`Pointage annulé pour ${guest.prenom} ${guest.nom}`);
+      } else {
+        await weddingStore.checkInGuest(guest.id, 'Admin Table');
+        toast.success(`Pointé avec succès : ${guest.prenom} ${guest.nom}`);
+      }
+      await loadData();
+    } catch (e: any) {
+      toast.error(e.message || 'Erreur lors du pointage');
     }
   };
 
   const handleDelete = async (guestId: string, name: string) => {
     if (window.confirm(`Confirmez-vous la suppression de l'invité ${name} ?`)) {
-      await weddingStore.deleteGuest(guestId);
+      try {
+        await weddingStore.deleteGuest(guestId);
+        toast.success(`Invité "${name}" supprimé avec succès`);
+        await loadData();
+      } catch (e: any) {
+        toast.error(e.message || 'Erreur lors de la suppression');
+      }
     }
   };
 
@@ -417,8 +431,13 @@ export const GuestDataTable: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={async (g) => {
-          await weddingStore.saveGuest(g);
-          loadData();
+          try {
+            await weddingStore.saveGuest(g);
+            toast.success(editingGuest ? 'Invité mis à jour avec succès' : 'Invité ajouté et enregistré avec succès');
+            await loadData();
+          } catch (e: any) {
+            toast.error(e.message || 'Erreur lors de l\'enregistrement de l\'invité');
+          }
         }}
         guest={editingGuest}
         tables={tables}

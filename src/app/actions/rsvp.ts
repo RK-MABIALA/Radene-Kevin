@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import QRCode from 'qrcode';
 import { GuestItem } from '@/lib/database.types';
 import { generateUUID } from '@/lib/supabase/client';
+import { sanitizeGuestForDb } from './guests';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -67,7 +68,8 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
   // 1. Sauvegarde dans Supabase si connecté
   if (supabase) {
     try {
-      const { error: upsertError } = await supabase.from('guests').upsert(record as any);
+      const dbPayload = await sanitizeGuestForDb(record);
+      const { error: upsertError } = await supabase.from('guests').upsert(dbPayload);
       if (upsertError) {
         console.warn('Erreur Supabase saveGuest:', upsertError);
       }
