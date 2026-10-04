@@ -40,9 +40,9 @@
     "framer-motion": "^11.11.1",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.453.0",
-    "next": "14.2.15",
+    "next": "^15.5.27",
     "pino": "^10.3.1",
-    "postcss": "^8.4.47",
+    "postcss": "^8.5.3",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.0.1",
     "react": "^18.3.1",
@@ -61,6 +61,14 @@
   },
   "devDependencies": {
     "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.15"
+    "eslint-config-next": "^15.5.27"
+  },
+  "overrides": {
+    "postcss": "^8.5.3",
+    "esbuild": "^0.28.1",
+    "braces": "^3.0.3",
+    "micromatch": "^4.0.8",
+    "fast-glob": "^3.3.3",
+    "chokidar": "^4.0.3"
   }
 }
