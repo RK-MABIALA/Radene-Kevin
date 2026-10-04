@@ -1,22 +1,13 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import QRCode from 'qrcode';
 import { GuestItem } from '@/lib/database.types';
 import { generateUUID } from '@/lib/supabase/client';
-import { sanitizeGuestForDb } from './guests';
+import { saveGuestAction } from './guests';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
 const resendApiKey = process.env.RESEND_API_KEY || '';
 const resendFromEmail = process.env.RESEND_FROM_EMAIL || 'mariage@radene-kevin.com';
-
-function getSupabaseServerClient() {
-  if (!supabaseUrl.startsWith('https://')) return null;
-  return createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
-}
 
 export interface RsvpActionResult {
   success: boolean;
@@ -29,8 +20,6 @@ export interface RsvpActionResult {
  * Server Action : Enregistrement du RSVP + Envoi automatique de l'e-mail de confirmation avec QR Pass
  */
 export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<RsvpActionResult> {
-  const supabase = getSupabaseServerClient();
-
   const id = guestData.id || generateUUID();
   const now = new Date().toISOString();
 
@@ -65,27 +54,25 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
     updated_at: now,
   };
 
-  // 1. Sauvegarde dans Supabase si connecté
-  if (supabase) {
-    try {
-      const dbPayload = await sanitizeGuestForDb(record);
-      const { error: upsertError } = await supabase.from('guests').upsert(dbPayload);
-      if (upsertError) {
-        console.warn('Erreur Supabase saveGuest:', upsertError);
-      }
-    } catch (e) {
-      console.warn('Supabase exception saveGuest:', e);
+  // 1. Sauvegarde robuste dans Supabase
+  let savedRecord: GuestItem = record;
+  try {
+    const saveResult = await saveGuestAction(record);
+    if (saveResult.success && saveResult.data) {
+      savedRecord = saveResult.data;
     }
+  } catch (e) {
+    console.warn('Erreur saveGuestAction dans submitRsvpAction:', e);
   }
 
   // 2. Envoi automatique de l'e-mail de confirmation via Resend
   let emailSent = false;
-  if (record.email && record.statut_rsvp === 'confirme' && resendApiKey && !resendApiKey.startsWith('re_123456')) {
+  if (savedRecord.email && savedRecord.statut_rsvp === 'confirme' && resendApiKey && !resendApiKey.startsWith('re_123456')) {
     try {
       const resend = new Resend(resendApiKey);
 
       // Génération du QR Code au format Base64 Data URL pour affichage dans l'e-mail
-      const qrDataUrl = await QRCode.toDataURL(record.qr_code_uid, {
+      const qrDataUrl = await QRCode.toDataURL(savedRecord.qr_code_uid, {
         margin: 1,
         width: 240,
         color: {
@@ -101,7 +88,7 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
         menu_enfant: 'Menu Enfant Gourmand',
       };
 
-      const selectedMenuLabel = record.menu_choisi ? menuLabelMap[record.menu_choisi] || record.menu_choisi : 'Menu Standard';
+      const selectedMenuLabel = savedRecord.menu_choisi ? menuLabelMap[savedRecord.menu_choisi] || savedRecord.menu_choisi : 'Menu Standard';
 
       const emailHtml = `
         <!DOCTYPE html>
@@ -124,7 +111,7 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
             
             <div style="border-top: 1px solid #F0E6D6; border-bottom: 1px solid #F0E6D6; padding: 20px 0; margin-bottom: 24px;">
               <h2 style="font-size: 22px; color: #271C0B; margin: 0 0 10px 0; font-weight: normal;">
-                Ch&egrave;re / Cher ${record.prenom},
+                Ch&egrave;re / Cher ${savedRecord.prenom},
               </h2>
               <p style="font-size: 15px; line-height: 1.6; color: #5A4322; margin: 0;">
                 Nous avons le plaisir de vous confirmer la bonne r&eacute;ception de votre r&eacute;ponse. C&apos;est un bonheur immense de vous savoir &agrave; nos c&ocirc;t&eacute;s pour c&eacute;l&eacute;brer cette journ&eacute;e inoubliable !
@@ -142,13 +129,13 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
               </div>
 
               <p style="font-family: monospace; font-size: 20px; font-weight: bold; color: #9C793F; letter-spacing: 4px; margin: 0 0 12px 0;">
-                CODE : ${record.qr_code_uid}
+                CODE : ${savedRecord.qr_code_uid}
               </p>
 
               <div style="font-size: 13px; color: #443217; line-height: 1.5; border-top: 1px dashed #CAAB79; padding-top: 12px; margin-top: 8px;">
-                <p style="margin: 4px 0;"><strong>Invit&eacute;(s) :</strong> ${record.prenom} ${record.nom} (${record.nombre_invites} personne${record.nombre_invites > 1 ? 's' : ''})</p>
+                <p style="margin: 4px 0;"><strong>Invit&eacute;(s) :</strong> ${savedRecord.prenom} ${savedRecord.nom} (${savedRecord.nombre_invites} personne${savedRecord.nombre_invites > 1 ? 's' : ''})</p>
                 <p style="margin: 4px 0;"><strong>Menu s&eacute;lectionn&eacute; :</strong> ${selectedMenuLabel}</p>
-                ${record.allergies ? `<p style="margin: 4px 0; color: #8D4739;"><strong>Allergies / R&eacute;gime :</strong> ${record.allergies}</p>` : ''}
+                ${savedRecord.allergies ? `<p style="margin: 4px 0; color: #8D4739;"><strong>Allergies / R&eacute;gime :</strong> ${savedRecord.allergies}</p>` : ''}
               </div>
             </div>
 
@@ -173,8 +160,8 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
 
       await resend.emails.send({
         from: `Mariage Radene & Kevin <${resendFromEmail}>`,
-        to: [record.email],
-        subject: `✨ Votre Pass d'Accès VIP — Mariage Radene & Kevin (20 Juin 2026)`,
+        to: [savedRecord.email],
+        subject: `✨ Votre Pass d'Accès VIP — Mariage Radene & Kevin (5 Décembre 2026)`,
         html: emailHtml,
       });
 
@@ -186,10 +173,10 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
 
   return {
     success: true,
-    message: record.statut_rsvp === 'confirme' 
-      ? `Merci ${record.prenom} ! Votre présence a bien été confirmée.`
+    message: savedRecord.statut_rsvp === 'confirme' 
+      ? `Merci ${savedRecord.prenom} ! Votre présence a bien été confirmée.`
       : `Votre réponse a bien été enregistrée.`,
-    guest: record,
+    guest: savedRecord,
     emailSent,
   };
 }
