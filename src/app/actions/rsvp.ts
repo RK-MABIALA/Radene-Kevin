@@ -2,68 +2,299 @@
 
 import { Resend } from 'resend';
 import QRCode from 'qrcode';
-import { GuestItem } from '@/lib/database.types';
+import { GuestItem, TableItem } from '@/lib/database.types';
 import { generateUUID } from '@/lib/supabase/client';
-import { saveGuestAction } from './guests';
+import { parseGuestFromDb, saveGuestAction } from './guests';
+import { getSupabaseAdminClient as getSupabaseServerClient, cleanInviteCode } from '@/lib/supabase/server';
 
-const resendApiKey = process.env.RESEND_API_KEY || '';
-const resendFromEmail = process.env.RESEND_FROM_EMAIL || 'mariage@radene-kevin.com';
-
-export interface RsvpActionResult {
-  success: boolean;
-  message: string;
-  guest?: GuestItem;
-  emailSent?: boolean;
+function normalizePhoneDigits(phone?: string | null): string {
+  return (phone || '').replace(/[^\d]/g, '');
 }
 
 /**
- * Server Action : Enregistrement du RSVP + Envoi automatique de l'e-mail de confirmation avec QR Pass
+ * Server Action Sécurisée : Vérification d'une invitation sans exposer la liste d'invités
+ */
+export async function verifyGuestInvitationAction(params: {
+  code?: string;
+  nom?: string;
+  prenom?: string;
+  telephone?: string;
+}): Promise<VerifiedGuestResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return { success: false, message: 'Service temporairement indisponible (base de données non connectée).' };
+  }
+
+  try {
+    const cleanCode = cleanInviteCode(params.code);
+
+    // 1. Recherche par Code d'invitation (méthode principale et directe)
+    if (cleanCode) {
+      if (cleanCode.length < 4 || cleanCode === 'RK' || cleanCode === 'RK-') {
+        return {
+          success: false,
+          message: "Veuillez saisir votre code d'invitation complet (ex: RK-046) figurant sur votre faire-part.",
+        };
+      }
+
+      const { data: row, error } = await supabase
+        .from('guests')
+        .select('*')
+        .ilike('qr_code_uid', cleanCode)
+        .maybeSingle();
+
+      if (error) {
+        console.error('verifyGuestInvitationAction error:', error);
+        return { success: false, message: 'Erreur lors de la vérification du code.' };
+      }
+
+      if (!row) {
+        return {
+          success: false,
+          message: `Le code d'invitation "${cleanCode}" est introuvable. Veuillez vérifier votre faire-part ou contacter les mariés.`,
+        };
+      }
+
+      const guest = await parseGuestFromDb(row);
+      let companion = null;
+
+      if (guest.companion_id) {
+        const { data: compRow } = await supabase
+          .from('guests')
+          .select('id, nom, prenom, relation_type, statut_rsvp, qr_code_uid')
+          .eq('id', guest.companion_id)
+          .maybeSingle();
+
+        if (compRow) {
+          companion = {
+            id: compRow.id,
+            nom: compRow.nom,
+            prenom: compRow.prenom,
+            relation_type: compRow.relation_type || 'conjoint',
+            statut_rsvp: compRow.statut_rsvp,
+            qr_code_uid: compRow.qr_code_uid,
+          };
+        }
+      }
+
+      return { success: true, guest, companion };
+    }
+
+    // 2. Recherche par Nom & Prénom (+ téléphone pour vérification d'identité)
+    const nomInput = (params.nom || '').trim().toLowerCase();
+    const prenomInput = (params.prenom || '').trim().toLowerCase();
+
+    if (!nomInput && !prenomInput) {
+      return { success: false, message: "Veuillez saisir votre code d'invitation ou votre nom et prénom." };
+    }
+
+    if (nomInput.length < 2 && prenomInput.length < 2) {
+      return { success: false, message: 'Veuillez saisir au moins 3 caractères pour la recherche.' };
+    }
+
+    // Récupérer uniquement les correspondances côté serveur
+    const { data: allCandidates, error: searchErr } = await supabase
+      .from('guests')
+      .select('*');
+
+    if (searchErr || !allCandidates) {
+      return { success: false, message: 'Erreur de recherche en base de données.' };
+    }
+
+    const matched = allCandidates.filter((g) => {
+      const gNom = (g.nom || '').trim().toLowerCase();
+      const gPrenom = (g.prenom || '').trim().toLowerCase();
+      const gFull = `${gPrenom} ${gNom}`.trim().toLowerCase();
+      const gRev = `${gNom} ${gPrenom}`.trim().toLowerCase();
+
+      let isNameMatch = false;
+      if (nomInput && prenomInput) {
+        isNameMatch =
+          (gNom === nomInput && gPrenom === prenomInput) ||
+          (gNom === prenomInput && gPrenom === nomInput) ||
+          gFull === `${prenomInput} ${nomInput}` ||
+          gRev === `${nomInput} ${prenomInput}`;
+      } else {
+        const singleQuery = (nomInput || prenomInput).toLowerCase();
+        isNameMatch = gFull === singleQuery || gRev === singleQuery || gNom === singleQuery || gPrenom === singleQuery;
+      }
+
+      if (!isNameMatch) return false;
+
+      // Si le téléphone est fourni, vérifier la concordance
+      if (params.telephone) {
+        const inputPhone = normalizePhoneDigits(params.telephone);
+        const guestPhone = normalizePhoneDigits(g.telephone);
+        if (inputPhone.length >= 6 && guestPhone.length >= 6) {
+          return guestPhone.endsWith(inputPhone) || inputPhone.endsWith(guestPhone) || guestPhone.includes(inputPhone);
+        }
+      }
+
+      return true;
+    });
+
+    if (matched.length === 0) {
+      return {
+        success: false,
+        message: "Aucune invitation trouvée pour ce nom. Veuillez vérifier l'orthographe exacte ou utiliser votre code personnel d'invitation (ex: RK-046).",
+      };
+    }
+
+    if (matched.length > 1) {
+      return {
+        success: false,
+        message: "Plusieurs invitations correspondent à ce nom. Veuillez saisir votre code personnel d'invitation ou votre numéro de téléphone pour vous identifier.",
+      };
+    }
+
+    const singleGuest = await parseGuestFromDb(matched[0]);
+    let companion = null;
+
+    if (singleGuest.companion_id) {
+      const { data: compRow } = await supabase
+        .from('guests')
+        .select('id, nom, prenom, relation_type, statut_rsvp, qr_code_uid')
+        .eq('id', singleGuest.companion_id)
+        .maybeSingle();
+
+      if (compRow) {
+        companion = {
+          id: compRow.id,
+          nom: compRow.nom,
+          prenom: compRow.prenom,
+          relation_type: compRow.relation_type || 'conjoint',
+          statut_rsvp: compRow.statut_rsvp,
+          qr_code_uid: compRow.qr_code_uid,
+        };
+      }
+    }
+
+    return { success: true, guest: singleGuest, companion };
+  } catch (err: any) {
+    console.error('verifyGuestInvitationAction exception:', err);
+    return { success: false, message: 'Une erreur est survenue lors de la vérification.' };
+  }
+}
+
+/**
+ * Server Action Sécurisée : Recherche de la table attribuée sans exposer la liste globale des invités
+ */
+export async function findTableForGuestAction(params: {
+  code?: string;
+  nom?: string;
+  prenom?: string;
+}): Promise<TableSearchResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return { success: false, message: 'Base de données non disponible.' };
+  }
+
+  try {
+    const verified = await verifyGuestInvitationAction(params);
+    if (!verified.success || !verified.guest) {
+      return { success: false, message: verified.message || 'Invité introuvable.' };
+    }
+
+    const guest = verified.guest;
+    if (!guest.table_id) {
+      return {
+        success: true,
+        guestName: `${guest.prenom} ${guest.nom}`,
+        table: null,
+        message: 'Votre placement est en cours de finalisation par les mariés. Votre table sera affichée très prochainement !',
+      };
+    }
+
+    const { data: tableData } = await supabase
+      .from('tables')
+      .select('*')
+      .eq('id', guest.table_id)
+      .maybeSingle();
+
+    let tableMates: Array<{ nom: string; prenom: string }> = [];
+    if (tableData) {
+      const { data: mates } = await supabase
+        .from('guests')
+        .select('nom, prenom')
+        .eq('table_id', guest.table_id)
+        .neq('id', guest.id);
+
+      if (mates) {
+        tableMates = mates.map((m) => ({ nom: m.nom, prenom: m.prenom }));
+      }
+    }
+
+    return {
+      success: true,
+      guestName: `${guest.prenom} ${guest.nom}`,
+      table: tableData || null,
+      tableMates,
+    };
+  } catch (err) {
+    console.error('findTableForGuestAction exception:', err);
+    return { success: false, message: 'Erreur lors de la recherche de table.' };
+  }
+}
+
+/**
+ * Server Action : Enregistrement sécurisé du RSVP + Envoi automatique de l'e-mail de confirmation avec QR Pass
  */
 export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<RsvpActionResult> {
-  const id = guestData.id || generateUUID();
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return { success: false, message: 'Erreur de connexion à la base de données.' };
+  }
+
+  // Vérification de sécurité : l'invité DOIT déjà exister sur la liste officielle
+  if (!guestData.id) {
+    return { success: false, message: "Identification requise. Seuls les invités figurant sur la liste officielle peuvent confirmer leur présence." };
+  }
+
+  const { data: existingRow, error: checkErr } = await supabase
+    .from('guests')
+    .select('*')
+    .eq('id', guestData.id)
+    .maybeSingle();
+
+  if (checkErr || !existingRow) {
+    return { success: false, message: "Invitation introuvable sur la liste officielle du mariage." };
+  }
+
+  // Contrôle d'intégrité : le QR code UID doit concorder avec la fiche existante
+  if (guestData.qr_code_uid && existingRow.qr_code_uid && guestData.qr_code_uid !== existingRow.qr_code_uid) {
+    return { success: false, message: "Non concordance du code d'invitation." };
+  }
+
   const now = new Date().toISOString();
-
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let fallbackQr = "RK-";
-  for (let i = 0; i < 5; i++) fallbackQr += chars.charAt(Math.floor(Math.random() * chars.length));
-
-  const qrCodeUid = guestData.qr_code_uid || fallbackQr;
-
-  const record: GuestItem = {
-    id,
-    nom: (guestData.nom || '').trim(),
-    prenom: (guestData.prenom || '').trim(),
-    email: (guestData.email || '').trim() || undefined,
-    telephone: (guestData.telephone || '').trim() || undefined,
-    statut_rsvp: guestData.statut_rsvp || 'en_attente',
-    menu_choisi: undefined,
-    allergies: (guestData.allergies || '').trim() || undefined,
-    companion_id: guestData.companion_id || null,
-    relation_type: guestData.relation_type || 'conjoint',
-    accompagnants_json: [],
-    qr_code_uid: qrCodeUid,
-    table_id: guestData.table_id || null,
-    checked_in: guestData.checked_in || false,
-    checked_in_at: guestData.checked_in_at || null,
-    checked_in_by: guestData.checked_in_by || null,
-    nombre_invites: 1,
-    navette_requise: guestData.navette_requise || false,
-    hebergement_requis: guestData.hebergement_requis || false,
-    message_maries: (guestData.message_maries || '').trim() || undefined,
-    created_at: now,
+  const updatePayload: Record<string, any> = {
+    statut_rsvp: guestData.statut_rsvp || 'confirme',
+    allergies: (guestData.allergies || '').trim() || null,
+    navette_requise: Boolean(guestData.navette_requise),
+    hebergement_requis: Boolean(guestData.hebergement_requis),
+    message_maries: (guestData.message_maries || '').trim() || null,
     updated_at: now,
   };
 
-  // 1. Sauvegarde robuste dans Supabase
-  let savedRecord: GuestItem = record;
-  try {
-    const saveResult = await saveGuestAction(record);
-    if (saveResult.success && saveResult.data) {
-      savedRecord = saveResult.data;
-    }
-  } catch (e) {
-    console.warn('Erreur saveGuestAction dans submitRsvpAction:', e);
+  if (guestData.email && guestData.email.trim()) {
+    updatePayload.email = guestData.email.trim();
   }
+  if (guestData.telephone && guestData.telephone.trim()) {
+    updatePayload.telephone = guestData.telephone.trim();
+  }
+
+  const { data: updatedRow, error: updateErr } = await supabase
+    .from('guests')
+    .update(updatePayload)
+    .eq('id', existingRow.id)
+    .select()
+    .single();
+
+  if (updateErr || !updatedRow) {
+    console.error('submitRsvpAction update error:', updateErr);
+    return { success: false, message: "Erreur lors de l'enregistrement de votre confirmation." };
+  }
+
+  const savedRecord = await parseGuestFromDb(updatedRow);
 
   // 2. Envoi automatique de l'e-mail de confirmation via Resend
   let emailSent = false;

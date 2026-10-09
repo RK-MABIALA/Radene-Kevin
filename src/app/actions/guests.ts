@@ -7,13 +7,7 @@ import { GuestItem } from '@/lib/database.types';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgdoudwqamjxlzawqtkl.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnZG91ZHdxYW1qeGx6YXdxdGtsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDc4MTczMywiZXhwIjoyMTA2MzU3NzMzfQ.ELWyHoxDpnGyYQeOW4VylZcH8raUHlkoXujn97jivjc';
 
-function getSupabaseServerClient() {
-  if (!supabaseUrl.startsWith('https://')) return null;
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    realtime: { transport: ws },
-  });
-}
+import { getSupabaseAdminClient as getSupabaseServerClient } from '@/lib/supabase/server';
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
