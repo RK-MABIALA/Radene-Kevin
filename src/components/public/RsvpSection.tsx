@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
 import {
   CheckCircle2,
   XCircle,
@@ -16,6 +17,10 @@ import {
   ShieldCheck,
   UserCheck,
   Search,
+  Download,
+  Share2,
+  QrCode,
+  ArrowRight,
 } from 'lucide-react';
 import { GuestItem } from '@/lib/database.types';
 import { triggerConfetti } from '@/lib/utils';
@@ -55,9 +60,19 @@ export const RsvpSection: React.FC = () => {
   const [hebergementRequis, setHebergementRequis] = useState(false);
   const [messageMaries, setMessageMaries] = useState('');
 
-  // Result State
+  // Result & Pass Download State
   const [submittedGuest, setSubmittedGuest] = useState<GuestItem | null>(null);
+  const [isReturningGuest, setIsReturningGuest] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [canShare, setCanShare] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      setCanShare(true);
+    }
+  }, []);
 
   const applyFoundGuest = (found: GuestItem, companion: any) => {
     setExistingGuest(found);
@@ -72,7 +87,16 @@ export const RsvpSection: React.FC = () => {
     setMessageMaries(found.message_maries || '');
     setLinkedCompanion(companion || null);
     setSearchError(null);
-    setStep(2);
+
+    // Si l'invité a DÉJÀ confirmé sa présence, on l'amène directement sur son Pass QR pour qu'il puisse le voir et le télécharger immédiatement !
+    if (found.statut_rsvp === 'confirme') {
+      setSubmittedGuest(found);
+      setIsReturningGuest(true);
+      setStep(4);
+    } else {
+      setIsReturningGuest(false);
+      setStep(2);
+    }
   };
 
   // Auto-detect code from URL on load (ex: ?code=RK-046)
@@ -197,6 +221,7 @@ export const RsvpSection: React.FC = () => {
       }
 
       setSubmittedGuest(actionRes.guest);
+      setIsReturningGuest(false);
       setStep(4);
       if (statutRsvp === 'confirme') {
         triggerConfetti();
@@ -206,6 +231,220 @@ export const RsvpSection: React.FC = () => {
       alert("Une erreur technique s'est produite lors de l'enregistrement de votre réponse.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // High-Resolution VIP Pass Canvas Generator & Downloader
+  const generatePassDataUrl = async (guest: GuestItem, companionName?: string): Promise<string> => {
+    const qrDataUrl = await QRCode.toDataURL(guest.qr_code_uid, {
+      width: 320,
+      margin: 1,
+      color: { dark: '#1E140A', light: '#FFFFFF' },
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 1120;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas non disponible');
+
+    // Support roundRect fallback
+    const roundRectPoly = (x: number, y: number, w: number, h: number, r: number) => {
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, w, h, r);
+      } else {
+        ctx.rect(x, y, w, h);
+      }
+    };
+
+    // 1. Fond luxueux ivoire avec dégradé royal
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, '#FAF7F0');
+    grad.addColorStop(0.5, '#FFFFFF');
+    grad.addColorStop(1, '#F4EDE0');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Double cadre or raffiné
+    ctx.strokeStyle = '#C5A059';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+
+    ctx.strokeStyle = '#DFCA9F';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(34, 34, canvas.width - 68, canvas.height - 68);
+
+    // 3. Ornements de coin (losanges dorés)
+    const drawDiamond = (x: number, y: number, s: number) => {
+      ctx.fillStyle = '#C5A059';
+      ctx.beginPath();
+      ctx.moveTo(x, y - s);
+      ctx.lineTo(x + s, y);
+      ctx.lineTo(x, y + s);
+      ctx.lineTo(x - s, y);
+      ctx.closePath();
+      ctx.fill();
+    };
+    drawDiamond(34, 34, 6);
+    drawDiamond(canvas.width - 34, 34, 6);
+    drawDiamond(34, canvas.height - 34, 6);
+    drawDiamond(canvas.width - 34, canvas.height - 34, 6);
+
+    // 4. En-tête : Noms des mariés
+    ctx.fillStyle = '#C5A059';
+    ctx.font = 'italic 52px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Radène & Kévin', canvas.width / 2, 110);
+
+    ctx.fillStyle = '#8C6B32';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('CÉLÉBRATION SACRÉE • SAMEDI 5 DÉCEMBRE 2026', canvas.width / 2, 145);
+
+    // 5. Badge doré : PASS D'ACCÈS JOUR J
+    const badgeWidth = 320;
+    const badgeHeight = 36;
+    const badgeX = (canvas.width - badgeWidth) / 2;
+    const badgeY = 175;
+    ctx.fillStyle = '#C5A059';
+    ctx.beginPath();
+    roundRectPoly(badgeX, badgeY, badgeWidth, badgeHeight, 18);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('PASS D’ACCÈS OFFICIEL JOUR-J', canvas.width / 2, badgeY + 23);
+
+    // 6. Cadre blanc avec ombre pour le QR code
+    const cardW = 380;
+    const cardH = 380;
+    const cardX = (canvas.width - cardW) / 2;
+    const cardY = 240;
+
+    ctx.shadowColor = 'rgba(197, 160, 89, 0.25)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    roundRectPoly(cardX, cardY, cardW, cardH, 24);
+    ctx.fill();
+
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#E8D8BF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 7. Dessin de l'image QR Code
+    await new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, cardX + 30, cardY + 30, 320, 320);
+        resolve();
+      };
+      img.onerror = reject;
+      img.src = qrDataUrl;
+    });
+
+    // 8. Code d'invitation (monospace doré)
+    ctx.fillStyle = '#7E5E2E';
+    ctx.font = 'bold 26px monospace';
+    ctx.fillText(`CODE : ${guest.qr_code_uid}`, canvas.width / 2, 665);
+
+    // Séparateur fin
+    ctx.strokeStyle = '#DFCA9F';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(150, 700);
+    ctx.lineTo(canvas.width - 150, 700);
+    ctx.stroke();
+
+    // 9. Informations Invité
+    ctx.fillStyle = '#1E140A';
+    ctx.font = 'bold 30px Georgia, serif';
+    ctx.fillText(`${guest.prenom} ${guest.nom}`, canvas.width / 2, 750);
+
+    if (companionName) {
+      ctx.fillStyle = '#8C6B32';
+      ctx.font = '500 16px sans-serif';
+      ctx.fillText(`💍 Duo officiel avec ${companionName}`, canvas.width / 2, 785);
+    }
+
+    // 10. Lieux et horaires
+    const startLocY = companionName ? 825 : 805;
+    ctx.fillStyle = '#4A3B28';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText('⛪ 11h00 : Bénédiction Nuptiale • Paroisse de Dieuppeul', canvas.width / 2, startLocY);
+    ctx.fillText('🥂 20h00 : Soirée de Gala & Banquet • Fun Time', canvas.width / 2, startLocY + 28);
+
+    ctx.fillStyle = '#8C6B32';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('Dakar, Sénégal', canvas.width / 2, startLocY + 54);
+
+    // 11. Instructions bas de page
+    ctx.fillStyle = '#7A6852';
+    ctx.font = 'italic 13px sans-serif';
+    ctx.fillText('Présentez ce QR Code au protocole d’accueil lors de votre arrivée.', canvas.width / 2, 990);
+
+    ctx.fillStyle = '#C5A059';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('radene-kevin.com', canvas.width / 2, 1040);
+
+    return canvas.toDataURL('image/png');
+  };
+
+  const handleDownloadPass = async () => {
+    if (!submittedGuest) return;
+    setIsDownloading(true);
+    setDownloadSuccess(false);
+
+    try {
+      const compName = linkedCompanion ? `${linkedCompanion.prenom} ${linkedCompanion.nom}` : undefined;
+      const dataUrl = await generatePassDataUrl(submittedGuest, compName);
+
+      const link = document.createElement('a');
+      link.download = `Pass-Acces-Mariage-Radene-Kevin-${submittedGuest.prenom}-${submittedGuest.nom}-${submittedGuest.qr_code_uid}.png`;
+      link.href = dataUrl;
+      link.click();
+
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 4000);
+    } catch (err) {
+      console.error('Erreur téléchargement Pass:', err);
+      // Fallback simple QR code download
+      try {
+        const qrUrl = await QRCode.toDataURL(submittedGuest.qr_code_uid, { width: 500, margin: 1 });
+        const link = document.createElement('a');
+        link.download = `QR-Pass-${submittedGuest.qr_code_uid}.png`;
+        link.href = qrUrl;
+        link.click();
+        setDownloadSuccess(true);
+      } catch {
+        alert("Erreur lors de la génération de l'image. N'hésitez pas à faire une capture d'écran de votre QR Code.");
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleSharePass = async () => {
+    if (!submittedGuest) return;
+    try {
+      const compName = linkedCompanion ? `${linkedCompanion.prenom} ${linkedCompanion.nom}` : undefined;
+      const dataUrl = await generatePassDataUrl(submittedGuest, compName);
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], `Pass-Acces-${submittedGuest.qr_code_uid}.png`, { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: 'Pass d’accès — Mariage Radène & Kévin',
+          text: `Voici mon Pass d’accès officiel pour le mariage de Radène & Kévin le Samedi 5 Décembre 2026 à Dakar (Code: ${submittedGuest.qr_code_uid}).`,
+          files: [file],
+        });
+      } else {
+        handleDownloadPass();
+      }
+    } catch {
+      handleDownloadPass();
     }
   };
 
@@ -264,7 +503,7 @@ export const RsvpSection: React.FC = () => {
                     Accédez à votre invitation
                   </h3>
                   <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-lg mx-auto">
-                    Pour préserver la confidentialité de la liste et éviter toute usurpation, veuillez saisir le code d&apos;invitation figurant sur votre faire-part.
+                    Saisissez votre code personnel d&apos;invitation pour confirmer votre présence ou retrouver et télécharger votre Pass d&apos;accès Jour J.
                   </p>
                 </div>
 
@@ -314,7 +553,7 @@ export const RsvpSection: React.FC = () => {
                           setInviteCode(e.target.value);
                           if (searchError) setSearchError(null);
                         }}
-                        placeholder="Ex: RK-046 ou RK-001..."
+                        placeholder="Ex: RK-046 ou RK-029..."
                         className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white dark:bg-zinc-800 border border-gold-300 text-zinc-900 dark:text-zinc-100 font-mono text-sm tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-gold-500 shadow-sm"
                       />
                     </div>
@@ -328,7 +567,7 @@ export const RsvpSection: React.FC = () => {
                     </button>
 
                     <p className="text-[11px] text-center text-zinc-500 dark:text-zinc-400 italic">
-                      💡 Votre code personnel d&apos;invitation se trouve dans votre message d&apos;invitation WhatsApp ou sur votre carton de faire-part.
+                      💡 Votre code figure sur votre faire-part ou dans votre message d&apos;invitation WhatsApp. Si vous avez déjà confirmé, vous accéderez directement à votre Pass QR.
                     </p>
                   </form>
                 )}
@@ -462,6 +701,30 @@ export const RsvpSection: React.FC = () => {
                     Changer
                   </button>
                 </div>
+
+                {/* Quick shortcut if already confirmed */}
+                {existingGuest?.statut_rsvp === 'confirme' && (
+                  <div className="p-3.5 rounded-2xl bg-gold-50/90 dark:bg-zinc-800 border border-gold-300 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-sm">
+                    <div className="text-xs text-gold-900 dark:text-gold-200 text-center sm:text-left">
+                      <span className="font-bold">✨ Vous avez déjà confirmé votre présence.</span>
+                      <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">
+                        Vous pouvez accéder immédiatement à votre Pass QR ou modifier vos choix ci-dessous.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubmittedGuest(existingGuest);
+                        setIsReturningGuest(true);
+                        setStep(4);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-wider shrink-0 flex items-center gap-1.5 shadow-sm"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Voir mon Pass QR →</span>
+                    </button>
+                  </div>
+                )}
 
                 <div className="text-center space-y-1">
                   <h3 className="font-serif-luxury text-2xl font-bold text-zinc-900 dark:text-zinc-100">
@@ -709,11 +972,15 @@ export const RsvpSection: React.FC = () => {
 
                 <div>
                   <h3 className="font-serif-luxury text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Merci {submittedGuest.prenom} !
+                    {isReturningGuest
+                      ? `Ravi de vous revoir ${submittedGuest.prenom} !`
+                      : `Merci ${submittedGuest.prenom} !`}
                   </h3>
                   <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 max-w-md mx-auto">
                     {submittedGuest.statut_rsvp === 'confirme'
-                      ? 'Votre présence est bien confirmée ! Voici votre Pass d’accès officiel pour le Jour J.'
+                      ? (isReturningGuest
+                          ? 'Votre présence est bien confirmée pour le Samedi 5 Décembre 2026. Vous pouvez télécharger votre Pass QR ci-dessous pour le Jour J.'
+                          : 'Votre présence est bien confirmée ! Voici votre Pass d’accès officiel pour le Jour J.')
                       : 'Votre réponse a bien été prise en compte. Merci infiniment pour votre délicate attention.'}
                   </p>
                 </div>
@@ -758,17 +1025,55 @@ export const RsvpSection: React.FC = () => {
                     <p className="text-[11px] text-zinc-400 mt-4 italic">
                       Présentez ce QR Code au protocole d&apos;accueil lors de votre arrivée.
                     </p>
+
+                    {/* Download & Share Action Buttons */}
+                    <div className="mt-6 pt-5 border-t border-gold-200/80 dark:border-zinc-800 space-y-2.5">
+                      <button
+                        type="button"
+                        onClick={handleDownloadPass}
+                        disabled={isDownloading}
+                        className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-gold-500 via-gold-600 to-gold-700 hover:from-gold-600 hover:to-gold-800 text-white font-bold text-xs uppercase tracking-widest shadow-gold hover:shadow-gold-glow flex items-center justify-center gap-2.5 transition-all active:scale-98 disabled:opacity-75"
+                      >
+                        {isDownloading ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Génération de votre Pass...</span>
+                          </>
+                        ) : downloadSuccess ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                            <span>Pass téléchargé avec succès !</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            <span>Télécharger mon Pass QR (Image)</span>
+                          </>
+                        )}
+                      </button>
+
+                      {canShare && (
+                        <button
+                          type="button"
+                          onClick={handleSharePass}
+                          disabled={isDownloading}
+                          className="w-full py-2.5 px-4 rounded-xl border border-gold-300 dark:border-gold-700 text-gold-900 dark:text-gold-200 hover:bg-gold-50/80 dark:hover:bg-zinc-800 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-gold-600" />
+                          <span>Enregistrer dans Photos / Partager</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 <div className="pt-4 flex flex-col sm:flex-row justify-center gap-3">
                   <button
+                    type="button"
                     onClick={() => {
-                      setStep(1);
-                      setSubmittedGuest(null);
-                      setExistingGuest(null);
+                      setStep(2);
                     }}
-                    className="px-6 py-2.5 rounded-full border border-gold-300 text-xs uppercase tracking-wider text-gold-800 font-semibold hover:bg-gold-50"
+                    className="px-6 py-2.5 rounded-full border border-gold-300 text-xs uppercase tracking-wider text-gold-800 dark:text-gold-300 font-semibold hover:bg-gold-50 dark:hover:bg-zinc-800"
                   >
                     Modifier ma réponse
                   </button>
@@ -778,6 +1083,23 @@ export const RsvpSection: React.FC = () => {
                   >
                     Voir le Programme →
                   </a>
+                </div>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep(1);
+                      setSubmittedGuest(null);
+                      setExistingGuest(null);
+                      setLinkedCompanion(null);
+                      setIsReturningGuest(false);
+                      setInviteCode('');
+                    }}
+                    className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline"
+                  >
+                    Saisir un autre code d&apos;invitation
+                  </button>
                 </div>
               </motion.div>
             )}
