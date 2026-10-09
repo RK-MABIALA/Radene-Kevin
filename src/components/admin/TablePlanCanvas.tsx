@@ -330,7 +330,7 @@ export const TablePlanCanvas: React.FC = () => {
                             {g.prenom} {g.nom}
                           </span>
                           <span className="text-[10px] text-zinc-400">
-                            {g.nombre_invites} pers. • {g.menu_choisi?.replace(/_/g, ' ') || 'Standard'}
+                            {g.nombre_invites} pers.{g.allergies ? ` • ⚠️ ${g.allergies}` : ''}
                           </span>
                         </div>
                         <button

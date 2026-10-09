@@ -28,7 +28,6 @@ export const GuestModal: React.FC<GuestModalProps> = ({
   const [email, setEmail] = useState('');
   const [telephone, setTelephone] = useState('');
   const [statutRsvp, setStatutRsvp] = useState<'en_attente' | 'confirme' | 'decline'>('en_attente');
-  const [menuChoisi, setMenuChoisi] = useState('viande_boeuf_rossini');
   const [allergies, setAllergies] = useState('');
   const [tableId, setTableId] = useState<string>('');
   const [checkedIn, setCheckedIn] = useState(false);
@@ -57,7 +56,6 @@ export const GuestModal: React.FC<GuestModalProps> = ({
       setEmail(guest.email || '');
       setTelephone(guest.telephone || '');
       setStatutRsvp(guest.statut_rsvp);
-      setMenuChoisi(guest.menu_choisi || 'viande_boeuf_rossini');
       setAllergies(guest.allergies || '');
       setTableId(guest.table_id || '');
       setCheckedIn(guest.checked_in);
@@ -74,7 +72,6 @@ export const GuestModal: React.FC<GuestModalProps> = ({
       setEmail('');
       setTelephone('');
       setStatutRsvp('en_attente');
-      setMenuChoisi('viande_boeuf_rossini');
       setAllergies('');
       setTableId('');
       setCheckedIn(false);
@@ -130,7 +127,6 @@ export const GuestModal: React.FC<GuestModalProps> = ({
         email: email.trim() || undefined,
         telephone: telephone.trim() || undefined,
         statut_rsvp: statutRsvp,
-        menu_choisi: menuChoisi,
         allergies: allergies.trim() || undefined,
         table_id: targetTableId,
         companion_id: companionId,
@@ -225,8 +221,8 @@ export const GuestModal: React.FC<GuestModalProps> = ({
             </div>
           </div>
 
-          {/* RSVP, Table, Menu */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* RSVP & Table */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">Statut RSVP</label>
               <select
@@ -253,20 +249,6 @@ export const GuestModal: React.FC<GuestModalProps> = ({
                     {t.nom_numero} ({t.capacite}p)
                   </option>
                 ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">Menu Principal</label>
-              <select
-                value={menuChoisi}
-                onChange={(e) => setMenuChoisi(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 text-xs focus:outline-none focus:ring-2 focus:ring-gold-500"
-              >
-                <option value="viande_boeuf_rossini">🥩 Bœuf Rossini</option>
-                <option value="poisson_bar_sauvage">🐟 Bar Sauvage</option>
-                <option value="vegetarien_truffe">🌱 Risotto Truffe</option>
-                <option value="menu_enfant">🧒 Menu Enfant</option>
               </select>
             </div>
           </div>

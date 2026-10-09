@@ -7,18 +7,12 @@ import {
   CheckCircle2,
   XCircle,
   Sparkles,
-  Utensils,
   AlertTriangle,
-  UserPlus,
-  Trash2,
   Send,
-  Download,
   Calendar,
   MapPin,
   Heart,
-  QrCode,
   Search,
-  Check,
 } from 'lucide-react';
 import { weddingStore } from '@/lib/supabase/client';
 import { GuestItem } from '@/lib/database.types';
@@ -39,7 +33,6 @@ export const RsvpSection: React.FC = () => {
   const [email, setEmail] = useState('');
   const [telephone, setTelephone] = useState('');
   const [statutRsvp, setStatutRsvp] = useState<'confirme' | 'decline' | ''>('confirme');
-  const [menuChoisi, setMenuChoisi] = useState('viande_boeuf_rossini');
   const [allergies, setAllergies] = useState('');
   const [navetteRequise, setNavetteRequise] = useState(false);
   const [hebergementRequis, setHebergementRequis] = useState(false);
@@ -48,34 +41,6 @@ export const RsvpSection: React.FC = () => {
   // Result State
   const [submittedGuest, setSubmittedGuest] = useState<GuestItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Menu Options
-  const menuOptions = [
-    {
-      id: 'viande_boeuf_rossini',
-      title: 'Filet de Bœuf Rossini',
-      desc: 'Foie gras poêlé, jus corsé à la truffe noire et écrasé de pommes rattes',
-      icon: '🥩',
-    },
-    {
-      id: 'poisson_bar_sauvage',
-      title: 'Dos de Bar Sauvage Rôti',
-      desc: 'Émulsion au champagne, petits légumes de Provence glacés au thym',
-      icon: '🐟',
-    },
-    {
-      id: 'vegetarien_truffe',
-      title: 'Risotto Crémeux aux Morilles',
-      desc: 'Asperges vertes croquantes, copeaux de truffe d\'été et parmesan 24 mois',
-      icon: '🌱',
-    },
-    {
-      id: 'menu_enfant',
-      title: 'Menu Enfant Gourmand',
-      desc: 'Suprême de volaille croustillant, frites maison et dessert surprise',
-      icon: '🧒',
-    },
-  ];
 
   const [guestSuggestions, setGuestSuggestions] = useState<GuestItem[]>([]);
   const [allRegisteredGuests, setAllRegisteredGuests] = useState<GuestItem[]>([]);
@@ -94,7 +59,6 @@ export const RsvpSection: React.FC = () => {
     setEmail(found.email || '');
     setTelephone(found.telephone || '');
     setStatutRsvp(found.statut_rsvp === 'en_attente' ? 'confirme' : (found.statut_rsvp as any));
-    if (found.menu_choisi) setMenuChoisi(found.menu_choisi);
     if (found.allergies) setAllergies(found.allergies);
     setNavetteRequise(found.navette_requise);
     setHebergementRequis(found.hebergement_requis);
@@ -201,7 +165,6 @@ export const RsvpSection: React.FC = () => {
         email: email.trim() || undefined,
         telephone: telephone.trim() || undefined,
         statut_rsvp: statutRsvp as any,
-        menu_choisi: statutRsvp === 'confirme' ? menuChoisi : undefined,
         allergies: allergies.trim() || undefined,
         companion_id: existingGuest?.companion_id,
         relation_type: existingGuest?.relation_type,
@@ -220,7 +183,7 @@ export const RsvpSection: React.FC = () => {
       await weddingStore.saveGuest(saved);
 
       setSubmittedGuest(saved);
-      setStep(5); // Success step
+      setStep(4); // Success step
       if (statutRsvp === 'confirme') {
         triggerConfetti();
       }
@@ -234,7 +197,6 @@ export const RsvpSection: React.FC = () => {
         email: email.trim() || undefined,
         telephone: telephone.trim() || undefined,
         statut_rsvp: statutRsvp as any,
-        menu_choisi: statutRsvp === 'confirme' ? menuChoisi : undefined,
         allergies: allergies.trim() || undefined,
         companion_id: existingGuest?.companion_id,
         relation_type: existingGuest?.relation_type,
@@ -245,7 +207,7 @@ export const RsvpSection: React.FC = () => {
         qr_code_uid: existingGuest?.qr_code_uid || generateQrUid(),
       });
       setSubmittedGuest(saved);
-      setStep(5);
+      setStep(4);
     } finally {
       setIsSubmitting(false);
     }
@@ -258,20 +220,20 @@ export const RsvpSection: React.FC = () => {
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-gold-100 dark:bg-zinc-800 border border-gold-200 text-gold-800 dark:text-gold-300 text-xs uppercase tracking-widest font-semibold mb-3">
             <Sparkles className="w-3.5 h-3.5 text-gold-600" />
-            <span>Réponse Souhaitée avant le 1er Mai 2026</span>
+            <span>Réponse Souhaitée avant le 5 Novembre 2026</span>
           </div>
           <h2 className="font-serif-luxury text-4xl sm:text-5xl lg:text-6xl text-zinc-900 dark:text-zinc-50 font-normal">
             Confirmez Votre Présence
           </h2>
           <p className="font-serif-luxury italic text-lg text-zinc-600 dark:text-zinc-400 mt-2">
-            Votre présence est le plus précieux des cadeaux pour illuminer notre journée.
+            Votre présence est le plus précieux des cadeaux pour illuminer notre sainte union.
           </p>
         </div>
 
         {/* Multi-step Form Card */}
         <div className="glass-card-gold rounded-3xl p-6 sm:p-10 shadow-gold relative">
           {/* Step Indicator */}
-          {step < 5 && (
+          {step < 4 && (
             <div className="flex items-center justify-between mb-8 pb-4 border-b border-gold-200/60 text-xs">
               <span className={`font-semibold uppercase tracking-wider ${step === 1 ? 'text-gold-700' : 'text-zinc-400'}`}>
                 1. Identification
@@ -282,11 +244,7 @@ export const RsvpSection: React.FC = () => {
               </span>
               <span className="text-zinc-300">•</span>
               <span className={`font-semibold uppercase tracking-wider ${step === 3 ? 'text-gold-700' : 'text-zinc-400'}`}>
-                3. Choix du Menu
-              </span>
-              <span className="text-zinc-300">•</span>
-              <span className={`font-semibold uppercase tracking-wider ${step === 4 ? 'text-gold-700' : 'text-zinc-400'}`}>
-                4. Vœux & Pass
+                3. Logistique &amp; Vœux
               </span>
             </div>
           )}
@@ -386,7 +344,7 @@ export const RsvpSection: React.FC = () => {
 
                 <div className="p-4 rounded-2xl bg-gold-50/50 dark:bg-zinc-800/40 border border-gold-200/60 text-center text-xs text-zinc-600 dark:text-zinc-400">
                   <p>
-                    🔒 <strong>Liste d&apos;invités fermée :</strong> La confirmation de présence est strictement réservée aux personnes figurant sur la liste officielle du mariage.
+                    🔒 <strong>Liste d&apos;invités officielle :</strong> La confirmation de présence est strictement réservée aux personnes invitées au mariage de Radène &amp; Kévin.
                   </p>
                 </div>
               </motion.div>
@@ -403,9 +361,9 @@ export const RsvpSection: React.FC = () => {
               >
                 <div className="text-center space-y-1">
                   <h3 className="font-serif-luxury text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Vos Coordonnées & Présence
+                    Vos Coordonnées &amp; Présence
                   </h3>
-                  <p className="text-xs text-zinc-500">Étape 1 sur 3</p>
+                  <p className="text-xs text-zinc-500">Étape 1 sur 2</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -437,7 +395,7 @@ export const RsvpSection: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1">
-                      Email (pour recevoir votre QR Pass)
+                      Email (pour recevoir votre Pass QR)
                     </label>
                     <input
                       type="email"
@@ -455,7 +413,7 @@ export const RsvpSection: React.FC = () => {
                       type="tel"
                       value={telephone}
                       onChange={(e) => setTelephone(e.target.value)}
-                      placeholder="+33 6 12 34 56 78"
+                      placeholder="+221 77 123 45 67"
                       className="w-full px-4 py-3 rounded-xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
                     />
                   </div>
@@ -464,7 +422,7 @@ export const RsvpSection: React.FC = () => {
                 {/* Présence selection buttons */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-3 text-center">
-                    Serez-vous présent(e) parmi nous le 20 Juin 2026 ? *
+                    Serez-vous présent(e) parmi nous pour la bénédiction nuptiale le Samedi 5 Décembre 2026 ? *
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <button
@@ -516,11 +474,7 @@ export const RsvpSection: React.FC = () => {
                         alert('Veuillez renseigner votre nom et prénom.');
                         return;
                       }
-                      if (statutRsvp === 'decline') {
-                        setStep(4); // Jump directly to message and submit
-                      } else {
-                        setStep(3); // Go to menu & +1
-                      }
+                      setStep(3);
                     }}
                     className="px-8 py-3 rounded-full bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-widest shadow-gold transition-colors"
                   >
@@ -530,7 +484,7 @@ export const RsvpSection: React.FC = () => {
               </motion.div>
             )}
 
-            {/* STEP 3: Menus Gastronomiques */}
+            {/* STEP 3: Logistique & Vœux */}
             {step === 3 && (
               <motion.div
                 key="step3"
@@ -541,9 +495,9 @@ export const RsvpSection: React.FC = () => {
               >
                 <div className="text-center space-y-1">
                   <h3 className="font-serif-luxury text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Choix de Votre Menu
+                    Logistique &amp; Mots Doux
                   </h3>
-                  <p className="text-xs text-zinc-500">Étape 2 sur 3</p>
+                  <p className="text-xs text-zinc-500">Étape 2 sur 2 avant validation</p>
                 </div>
 
                 {/* Linked companion info banner */}
@@ -567,123 +521,61 @@ export const RsvpSection: React.FC = () => {
                   </motion.div>
                 )}
 
-                {/* Primary Guest Menu */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-3">
-                    Votre choix de plat principal pour le dîner :
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {menuOptions.map((opt) => (
-                      <div
-                        key={opt.id}
-                        onClick={() => setMenuChoisi(opt.id)}
-                        className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
-                          menuChoisi === opt.id
-                            ? 'border-gold-500 bg-gold-50/90 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                            : 'border-gold-200 bg-white/60 hover:border-gold-300 text-zinc-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-serif-luxury font-bold text-base flex items-center gap-1.5">
-                            <span>{opt.icon}</span>
-                            <span>{opt.title}</span>
-                          </span>
-                          {menuChoisi === opt.id && <Check className="w-4 h-4 text-gold-600" />}
-                        </div>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-snug">{opt.desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Allergies */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1">
-                    Régimes particuliers & allergies alimentaires (si applicable) :
-                  </label>
-                  <input
-                    type="text"
-                    value={allergies}
-                    onChange={(e) => setAllergies(e.target.value)}
-                    placeholder="Ex: Sans gluten, allergie aux fruits de mer, arachides..."
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
-                  />
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t border-gold-200/60">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="text-xs font-semibold text-zinc-500 hover:text-zinc-800"
-                  >
-                    ← Retour
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStep(4)}
-                    className="px-8 py-3 rounded-full bg-gold-500 hover:bg-gold-600 text-white font-semibold text-xs uppercase tracking-widest shadow-gold transition-colors"
-                  >
-                    Continuer →
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* STEP 4: Logistique & Vœux */}
-            {step === 4 && (
-              <motion.div
-                key="step4"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                <div className="text-center space-y-1">
-                  <h3 className="font-serif-luxury text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                    Logistique & Mots Doux
-                  </h3>
-                  <p className="text-xs text-zinc-500">Dernière étape avant la validation</p>
-                </div>
-
                 {/* Logistique checkboxes if confirmed */}
                 {statutRsvp === 'confirme' && (
-                  <div className="space-y-3 p-4 rounded-2xl bg-white/70 dark:bg-zinc-800 border border-gold-200">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={navetteRequise}
-                        onChange={(e) => setNavetteRequise(e.target.checked)}
-                        className="w-4 h-4 rounded text-gold-600 focus:ring-gold-500 border-gold-300"
-                      />
-                      <span className="text-xs text-zinc-700 dark:text-zinc-300">
-                        🚍 J'aurai besoin du service de navettes de nuit vers les hôtels partenaires
-                      </span>
-                    </label>
+                  <div className="space-y-4">
+                    <div className="space-y-3 p-4 rounded-2xl bg-white/70 dark:bg-zinc-800 border border-gold-200">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={navetteRequise}
+                          onChange={(e) => setNavetteRequise(e.target.checked)}
+                          className="w-4 h-4 rounded text-gold-600 focus:ring-gold-500 border-gold-300"
+                        />
+                        <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                          🚍 J&apos;aurai besoin du service de navettes entre l&apos;église, la salle de réception et les hôtels partenaires
+                        </span>
+                      </label>
 
-                    <label className="flex items-center gap-3 cursor-pointer">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hebergementRequis}
+                          onChange={(e) => setHebergementRequis(e.target.checked)}
+                          className="w-4 h-4 rounded text-gold-600 focus:ring-gold-500 border-gold-300"
+                        />
+                        <span className="text-xs text-zinc-700 dark:text-zinc-300">
+                          🏨 Je souhaite bénéficier du tarif préférentiel hébergement réservé aux invités du mariage
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Allergies / Particularités alimentaires */}
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1">
+                        Régimes particuliers ou allergies alimentaires (si applicable) :
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={hebergementRequis}
-                        onChange={(e) => setHebergementRequis(e.target.checked)}
-                        className="w-4 h-4 rounded text-gold-600 focus:ring-gold-500 border-gold-300"
+                        type="text"
+                        value={allergies}
+                        onChange={(e) => setAllergies(e.target.value)}
+                        placeholder="Ex: Végétarien, sans gluten, sans arachide, allergie fruits de mer..."
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
                       />
-                      <span className="text-xs text-zinc-700 dark:text-zinc-300">
-                        🏨 Je souhaite réserver une chambre avec le tarif préférentiel mariage
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 )}
 
                 {/* Message to Bride & Groom */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 mb-1">
-                    Un petit message ou vœu pour Radene & Kevin :
+                    Un petit mot ou vœu pour Radène &amp; Kévin :
                   </label>
                   <textarea
                     rows={4}
                     value={messageMaries}
                     onChange={(e) => setMessageMaries(e.target.value)}
-                    placeholder="Écrivez vos vœux, félicitations ou anecdotes..."
+                    placeholder="Écrivez vos vœux, bénédictions, félicitations ou mots doux..."
                     className="w-full px-4 py-3 rounded-2xl bg-white/90 dark:bg-zinc-800 border border-gold-300 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
                   />
                 </div>
@@ -691,7 +583,7 @@ export const RsvpSection: React.FC = () => {
                 <div className="flex justify-between items-center pt-4">
                   <button
                     type="button"
-                    onClick={() => setStep(statutRsvp === 'decline' ? 2 : 3)}
+                    onClick={() => setStep(2)}
                     className="text-xs font-semibold text-zinc-500 hover:text-zinc-800"
                   >
                     ← Retour
@@ -709,10 +601,10 @@ export const RsvpSection: React.FC = () => {
               </motion.div>
             )}
 
-            {/* STEP 5: SUCCESS / CONFIRMATION & QR PASS */}
-            {step === 5 && submittedGuest && (
+            {/* STEP 4: SUCCESS / CONFIRMATION & QR PASS */}
+            {step === 4 && submittedGuest && (
               <motion.div
-                key="step5"
+                key="step4"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="text-center space-y-6"
@@ -727,8 +619,8 @@ export const RsvpSection: React.FC = () => {
                   </h3>
                   <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 max-w-md mx-auto">
                     {submittedGuest.statut_rsvp === 'confirme'
-                      ? 'Votre présence est bien confirmée ! Voici votre Pass d’accès VIP pour le Jour J.'
-                      : 'Votre réponse a bien été prise en compte. Merci infiniment pour votre délicatesse.'}
+                      ? 'Votre présence est bien confirmée ! Voici votre Pass d’accès officiel pour le Jour J.'
+                      : 'Votre réponse a bien été prise en compte. Merci infiniment pour votre délicate attention.'}
                   </p>
                 </div>
 
@@ -737,7 +629,7 @@ export const RsvpSection: React.FC = () => {
                   <div className="max-w-md mx-auto rounded-3xl p-6 bg-gradient-to-b from-ivory to-gold-50 dark:from-zinc-900 dark:to-zinc-950 border-2 border-gold-400 shadow-gold-glow relative overflow-hidden text-center">
                     {/* Header Monogram */}
                     <div className="flex items-center justify-between border-b border-gold-300 pb-3 mb-4">
-                      <span className="font-script-calligraphy text-2xl text-gold-600">R & K</span>
+                      <span className="font-script-calligraphy text-2xl text-gold-600">R &amp; K</span>
                       <span className="text-[10px] uppercase font-bold tracking-widest text-gold-700 bg-gold-100 px-2.5 py-1 rounded-full">
                         Pass Accès Jour J
                       </span>
@@ -766,11 +658,11 @@ export const RsvpSection: React.FC = () => {
                           💍 Duo associé : {linkedCompanion.prenom} {linkedCompanion.nom}
                         </p>
                       )}
-                      <p>📍 Eglise Protestante de Dieuppeul &amp; Fun Time • 5 &amp; 6 Déc. 2026</p>
+                      <p>📍 Eglise Protestante de Dieuppeul &amp; Fun Time • Samedi 5 Décembre 2026</p>
                     </div>
 
                     <p className="text-[11px] text-zinc-400 mt-4 italic">
-                      Présentez ce QR Code au protocole d'accueil lors de votre arrivée.
+                      Présentez ce QR Code au protocole d&apos;accueil lors de votre arrivée.
                     </p>
                   </div>
                 )}
@@ -801,3 +693,4 @@ export const RsvpSection: React.FC = () => {
     </section>
   );
 };
+

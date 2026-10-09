@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const accompagnantSchema = z.object({
   nom: z.string().min(1, 'Le nom est requis'),
   prenom: z.string().min(1, 'Le prénom est requis'),
-  menu: z.string().optional().default('viande_boeuf_rossini'),
+  menu: z.string().optional(),
   allergies: z.string().optional(),
   age_category: z.enum(['adulte', 'enfant', 'bebe']).default('adulte'),
 });
@@ -20,8 +20,7 @@ export const rsvpFormSchema = z.object({
     required_error: 'Veuillez indiquer votre présence',
   }),
 
-  // Étape 2: Menu & Allergies (si confirmé)
-  menu_choisi: z.string().optional(),
+  // Étape 2: Régime & Allergies
   allergies: z.string().optional(),
 
   // Étape 3: Logistique & Vœux

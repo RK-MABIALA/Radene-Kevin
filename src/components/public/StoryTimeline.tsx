@@ -71,6 +71,17 @@ export const REAL_STORY_MILESTONES: MilestoneItem[] = [
     imagePosition: 'center 32%',
     tag: 'Union Civile',
   },
+  {
+    date: '05/12/2026',
+    displayDate: 'Samedi 5 Décembre 2026',
+    title: 'Bénédiction Nuptiale',
+    subtitle: 'L’Union Sacrée devant Dieu',
+    description:
+      'Célébration solennelle du sacrement de mariage à l’Eglise Protestante du Sénégal (Paroisse de Dieuppeul à 11h00), suivie de la soirée de gala royale à la salle Fun Time à Dakar.',
+    image: '/img/couple-1.jpg',
+    imagePosition: 'center 20%',
+    tag: 'Le Sacrement',
+  },
 ];
 
 export const StoryTimeline: React.FC = () => {

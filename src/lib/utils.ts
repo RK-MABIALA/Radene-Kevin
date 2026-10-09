@@ -95,8 +95,7 @@ export function exportGuestsToCsv(guests: any[], tables: any[] = []) {
     "Email",
     "Téléphone",
     "Statut RSVP",
-    "Menu Choisi",
-    "Allergies",
+    "Régime & Allergies",
     "Nombre Personnes",
     "Accompagnants",
     "Table",
@@ -111,7 +110,7 @@ export function exportGuestsToCsv(guests: any[], tables: any[] = []) {
   const rows = guests.map((g) => {
     const tableNom = g.table_id ? tableMap.get(g.table_id) || "Non assigné" : "Non assigné";
     const accompagnantsStr = Array.isArray(g.accompagnants_json)
-      ? g.accompagnants_json.map((a: any) => `${a.prenom} ${a.nom} (${a.menu || "standard"})`).join(" | ")
+      ? g.accompagnants_json.map((a: any) => `${a.prenom} ${a.nom}`).join(" | ")
       : "";
 
     return [
@@ -120,7 +119,6 @@ export function exportGuestsToCsv(guests: any[], tables: any[] = []) {
       `"${g.email || ""}"`,
       `"${g.telephone || ""}"`,
       `"${g.statut_rsvp || "en_attente"}"`,
-      `"${g.menu_choisi || ""}"`,
       `"${(g.allergies || "").replace(/"/g, '""')}"`,
       g.nombre_invites || 1,
       `"${accompagnantsStr.replace(/"/g, '""')}"`,

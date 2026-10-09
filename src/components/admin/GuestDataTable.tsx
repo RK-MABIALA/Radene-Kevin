@@ -259,7 +259,7 @@ export const GuestDataTable: React.FC = () => {
                 <th className="py-3.5 px-4">Invité</th>
                 <th className="py-3.5 px-4">Statut RSVP</th>
                 <th className="py-3.5 px-4">Conjoint / Accompagnant Lié</th>
-                <th className="py-3.5 px-4">Menu & Allergies</th>
+                <th className="py-3.5 px-4">Régime &amp; Allergies</th>
                 <th className="py-3.5 px-4">Table</th>
                 <th className="py-3.5 px-4">QR Code UID</th>
                 <th className="py-3.5 px-4 text-center">Pointage Jour J</th>
@@ -343,16 +343,15 @@ export const GuestDataTable: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Menu & Allergies */}
+                      {/* Régime & Allergies */}
                       <td className="py-3 px-4">
-                        <span className="font-medium text-zinc-700 dark:text-zinc-300 block">
-                          {guest.menu_choisi ? guest.menu_choisi.replace(/_/g, ' ') : '—'}
-                        </span>
-                        {guest.allergies && (
-                          <span className="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
-                            <AlertCircle className="w-3 h-3 shrink-0" />
+                        {guest.allergies ? (
+                          <span className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             <span>{guest.allergies}</span>
                           </span>
+                        ) : (
+                          <span className="text-zinc-400 font-normal">Standard</span>
                         )}
                       </td>
 

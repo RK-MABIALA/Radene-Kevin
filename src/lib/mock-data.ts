@@ -1977,4 +1977,12 @@ export const STORY_MILESTONES = [
     image: '/img/couple-16.jpg',
     tag: 'Union Civile',
   },
+  {
+    year: '05/12/2026',
+    title: 'Bénédiction Nuptiale',
+    subtitle: 'L’Union Sacrée devant Dieu',
+    description: 'Célébration solennelle du sacrement de mariage à l’Eglise Protestante de Dieuppeul à 11h00, suivie de la grande soirée de gala à la salle Fun Time à Dakar.',
+    image: '/img/couple-1.jpg',
+    tag: 'Le Sacrement',
+  },
 ];

@@ -36,7 +36,7 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
     email: (guestData.email || '').trim() || undefined,
     telephone: (guestData.telephone || '').trim() || undefined,
     statut_rsvp: guestData.statut_rsvp || 'en_attente',
-    menu_choisi: guestData.statut_rsvp === 'confirme' ? guestData.menu_choisi : undefined,
+    menu_choisi: undefined,
     allergies: (guestData.allergies || '').trim() || undefined,
     companion_id: guestData.companion_id || null,
     relation_type: guestData.relation_type || 'conjoint',
@@ -80,15 +80,6 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
           light: '#FFFFFF',
         },
       });
-
-      const menuLabelMap: Record<string, string> = {
-        viande_boeuf_rossini: 'Filet de Bœuf Rossini',
-        poisson_bar_sauvage: 'Dos de Bar Sauvage Rôti',
-        vegetarien_truffe: 'Risotto Crémeux aux Morilles & Truffe',
-        menu_enfant: 'Menu Enfant Gourmand',
-      };
-
-      const selectedMenuLabel = savedRecord.menu_choisi ? menuLabelMap[savedRecord.menu_choisi] || savedRecord.menu_choisi : 'Menu Standard';
 
       const emailHtml = `
         <!DOCTYPE html>
@@ -134,7 +125,6 @@ export async function submitRsvpAction(guestData: Partial<GuestItem>): Promise<R
 
               <div style="font-size: 13px; color: #443217; line-height: 1.5; border-top: 1px dashed #CAAB79; padding-top: 12px; margin-top: 8px;">
                 <p style="margin: 4px 0;"><strong>Invit&eacute;(s) :</strong> ${savedRecord.prenom} ${savedRecord.nom} (${savedRecord.nombre_invites} personne${savedRecord.nombre_invites > 1 ? 's' : ''})</p>
-                <p style="margin: 4px 0;"><strong>Menu s&eacute;lectionn&eacute; :</strong> ${selectedMenuLabel}</p>
                 ${savedRecord.allergies ? `<p style="margin: 4px 0; color: #8D4739;"><strong>Allergies / R&eacute;gime :</strong> ${savedRecord.allergies}</p>` : ''}
               </div>
             </div>

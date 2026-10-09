@@ -353,12 +353,6 @@ export const QrScannerCamera: React.FC = () => {
     setManualCode('');
   };
 
-  const menuDisplayMap: Record<string, string> = {
-    viande_boeuf_rossini: '🥩 Bœuf Rossini',
-    poisson_bar_sauvage: '🐟 Bar Sauvage',
-    vegetarien_truffe: '🌱 Risotto Truffe',
-    menu_enfant: '🧒 Menu Enfant',
-  };
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -676,12 +670,6 @@ export const QrScannerCamera: React.FC = () => {
                             {lastResult.table?.nom_numero || 'Non assignée'}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-zinc-400">Menu :</span>
-                          <span className="text-zinc-700 dark:text-zinc-300">
-                            {menuDisplayMap[lastResult.guest.menu_choisi || ''] || lastResult.guest.menu_choisi || 'Standard'}
-                          </span>
-                        </div>
                         {lastResult.guest.allergies && (
                           <div className="text-[11px] text-rose-600 font-semibold pt-1">
                             ⚠️ {lastResult.guest.allergies}
@@ -732,12 +720,6 @@ export const QrScannerCamera: React.FC = () => {
                           <span className="text-zinc-400">Table :</span>
                           <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                             {lastResult.companionTable?.nom_numero || lastResult.table?.nom_numero || 'Non assignée'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-zinc-400">Menu :</span>
-                          <span className="text-zinc-700 dark:text-zinc-300">
-                            {menuDisplayMap[lastResult.companionGuest.menu_choisi || ''] || lastResult.companionGuest.menu_choisi || 'Standard'}
                           </span>
                         </div>
                         {lastResult.companionGuest.allergies && (
@@ -801,21 +783,18 @@ export const QrScannerCamera: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Menu & Allergies */}
+                  {/* Régime & Allergies */}
                   <div className="p-4 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-zinc-200 text-left text-xs max-w-sm mx-auto">
                     <span className="font-bold text-zinc-500 uppercase text-[10px] block mb-1">
-                      Menu Sélectionné
+                      Régime &amp; Allergies
                     </span>
-                    <div className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {menuDisplayMap[lastResult.guest.menu_choisi || ''] || lastResult.guest.menu_choisi || 'Menu Standard'}
-                    </div>
                     {lastResult.guest.allergies ? (
-                      <div className="mt-2 p-2 rounded-xl bg-rose-50 text-rose-800 font-bold text-xs border border-rose-200 flex items-center gap-1.5">
+                      <div className="p-2 rounded-xl bg-rose-50 text-rose-800 font-bold text-xs border border-rose-200 flex items-center gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
                         <span>Attention : {lastResult.guest.allergies}</span>
                       </div>
                     ) : (
-                      <span className="text-[11px] text-zinc-400 mt-1 block">Aucune allergie signalée</span>
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400 block">Régime standard (aucune allergie signalée)</span>
                     )}
                   </div>
                 </div>
