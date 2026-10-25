@@ -1958,7 +1958,7 @@ export const STORY_MILESTONES = [
     title: 'Projet de Mariage (Jour de l’Anniversaire)',
     subtitle: 'Un Anniversaire Inoubliable',
     description: 'En ce jour béni d’anniversaire, notre projet de vie s’est illuminé : consacrer notre amour devant Dieu et nos familles.',
-    image: '/img/couple-14.jpg',
+    image: '/img/couple-19.jpg',
     tag: 'Le Grand OUI',
   },
   {

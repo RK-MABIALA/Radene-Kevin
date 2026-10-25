@@ -45,8 +45,8 @@ export const REAL_STORY_MILESTONES: MilestoneItem[] = [
     subtitle: 'Un Anniversaire Inoubliable',
     description:
       'En ce jour béni d’anniversaire, notre projet de vie s’est illuminé. Une demande émouvante et la décision sacrée d’unir nos cœurs devant Dieu et nos familles.',
-    image: '/img/couple-14.jpg',
-    imagePosition: 'center 32%',
+    image: '/img/couple-19.jpg',
+    imagePosition: 'center 28%',
     tag: 'Le Grand OUI',
   },
   {
