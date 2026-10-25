@@ -34,8 +34,8 @@ export const REAL_STORY_MILESTONES: MilestoneItem[] = [
     subtitle: 'La Promesse du Cœur',
     description:
       'L’officialisation de nos sentiments et l’engagement de marcher ensemble. Une promesse d’amour sincère, portée par la foi et la complicité grandissante.',
-    image: '/img/couple-4.jpg',
-    imagePosition: 'center 58%',
+    image: '/img/couple-18.jpg',
+    imagePosition: 'center 35%',
     tag: 'L’Engagement',
   },
   {

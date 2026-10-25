@@ -1798,7 +1798,7 @@ export const INITIAL_PHOTOS: PhotoItem[] = [
   {
     id: 'p4444444-4444-4444-4444-444444444444',
     url: '/img/couple-12.jpg',
-    uploaded_by: 'Alexandre Dupont',
+    uploaded_by: 'Radène & Kévin',
     event_id: 'e2222222-2222-2222-2222-222222222222',
     caption: 'Rayonnants sous les éclats dorés de cette belle journée ! 🥂',
     statut: 'valide',
@@ -1808,7 +1808,7 @@ export const INITIAL_PHOTOS: PhotoItem[] = [
   {
     id: 'p5555555-5555-5555-5555-555555555555',
     url: '/img/couple-10.jpg',
-    uploaded_by: 'Sophie Laurent',
+    uploaded_by: 'Radène & Kévin',
     event_id: 'e2222222-2222-2222-2222-222222222222',
     caption: 'La beauté des tenues traditionnelles bleu roi et or.',
     statut: 'valide',
@@ -1818,7 +1818,7 @@ export const INITIAL_PHOTOS: PhotoItem[] = [
   {
     id: 'p6666666-6666-6666-6666-666666666666',
     url: '/img/couple-4.jpg',
-    uploaded_by: 'Témoin Julien',
+    uploaded_by: 'Radène & Kévin',
     event_id: 'e3333333-3333-3333-3333-333333333333',
     caption: 'Moments précieux gravés pour l’éternité ✨',
     statut: 'valide',
@@ -1950,7 +1950,7 @@ export const STORY_MILESTONES = [
     title: 'Fiançailles',
     subtitle: 'La Promesse du Cœur',
     description: 'L’officialisation de nos sentiments et l’engagement de marcher ensemble dans la foi et l’amour sincère.',
-    image: '/img/couple-4.jpg',
+    image: '/img/couple-18.jpg',
     tag: 'L’Engagement',
   },
   {

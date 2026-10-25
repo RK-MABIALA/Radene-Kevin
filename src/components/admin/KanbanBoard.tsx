@@ -255,8 +255,8 @@ export const KanbanBoard: React.FC = () => {
                   >
                     <option value="Radene">👰 Radene</option>
                     <option value="Kevin">🤵 Kevin</option>
-                    <option value="Témoin Alexandre">🤵 Témoin Alexandre</option>
-                    <option value="Camille & Sophie">👗 Témoins Camille & Sophie</option>
+                    <option value="Radene & Kévin">👰🤵 Radene & Kévin</option>
+                    <option value="Vos amis">👗 Vos amis </option>
                     <option value="Protocole & Accueil">🎟️ Protocole & Accueil</option>
                   </select>
                 </div>

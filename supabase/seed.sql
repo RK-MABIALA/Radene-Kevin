@@ -313,8 +313,8 @@ VALUES
 ),
 (
     'd2222222-2222-4222-8222-222222222222',
-    'Alexandre & Camille',
-    'alexandre.dupont@example.com',
+    'Radene & Kévin',
+    'radene.kevin.mariage@example.com',
     'Quelle ambiance inoubliable ! Bravo pour cette organisation magistrale et ce lieu à couper le souffle. Longue vie à votre amour !',
     '🥂',
     false,

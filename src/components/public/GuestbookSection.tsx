@@ -83,7 +83,7 @@ export const GuestbookSection: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Tante Martine ou Famille Dupont"
+                  placeholder="Ex: Radène ou Kevin MABIALA"
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-800 border border-gold-300 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500"
@@ -114,9 +114,8 @@ export const GuestbookSection: React.FC = () => {
                       key={em}
                       type="button"
                       onClick={() => setEmoji(em)}
-                      className={`text-xl p-2 rounded-xl transition-all ${
-                        emoji === em ? 'bg-gold-500/20 scale-125 border border-gold-400' : 'hover:bg-gold-50'
-                      }`}
+                      className={`text-xl p-2 rounded-xl transition-all ${emoji === em ? 'bg-gold-500/20 scale-125 border border-gold-400' : 'hover:bg-gold-50'
+                        }`}
                     >
                       {em}
                     </button>
@@ -156,9 +155,8 @@ export const GuestbookSection: React.FC = () => {
                 key={item.id}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`glass-card-gold rounded-3xl p-6 relative transition-all ${
-                  item.is_pinned ? 'border-2 border-gold-500 bg-gold-50/60 dark:bg-zinc-800' : ''
-                }`}
+                className={`glass-card-gold rounded-3xl p-6 relative transition-all ${item.is_pinned ? 'border-2 border-gold-500 bg-gold-50/60 dark:bg-zinc-800' : ''
+                  }`}
               >
                 {item.is_pinned && (
                   <div className="absolute top-4 right-4 flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gold-700 bg-gold-200/80 px-2 py-0.5 rounded-full">
